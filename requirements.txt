@@ -5,3 +5,4 @@ matplotlib==3.8.2
 seaborn==0.13.2
 streamlit==1.62.0
 joblib==1.4.2
+pypdf==6.16.1

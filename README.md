@@ -57,9 +57,10 @@ streamlit run app.py
 Your browser opens **http://localhost:8501** automatically. To stop it, press `Ctrl + C` in the terminal.
 
 ## How to use the app
-The app has three tabs:
-- **Single patient** — move the sliders to enter a person's details and click *Predict* to see their diabetes risk
+The app has four tabs:
+- **Single patient** — enter a person's fasting and after-meal blood sugar plus other details, click *Predict* to see their diabetes risk. Blood sugar is color-coded (normal / pre-diabetes / diabetes range)
 - **Batch from CSV** — upload a file like `data/sample_patients.csv` and get predictions for everyone at once
+- **From test report** — upload a **PDF lab report** and the app reads it automatically, fills in the values, and predicts (you can correct anything first). Try `data/sample_report.pdf`
 - **Results & charts** — the charts and confusion matrix from this project
 
 > A trained model is already included, so the app works right away without training. Anyone else can do the same on their own laptop — no accounts or hosting needed.
@@ -143,6 +144,7 @@ The final app uses **Gradient Boosting** with a tuned decision threshold of **0.
 data/
   diabetes.csv              raw dataset
   sample_patients.csv       example file for the app's batch tab
+  sample_report.pdf         example lab report for the PDF tab
   processed/                cleaned data, train/test sets, trained model
 plots/                      all the charts
 src/
@@ -150,6 +152,7 @@ src/
   02_eda.py                 charts
   03_model_training.py      train + compare the 3 models
   04_optimization.py        optimize and save the final model
+  report_parser.py          reads lab report PDFs
 app.py                      the web app
 tests/
   test_project.py           checks the project still works
