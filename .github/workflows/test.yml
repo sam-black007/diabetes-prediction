@@ -33,5 +33,8 @@ jobs:
       - name: Run model training
         run: python src/03_model_training.py
 
+      - name: Run optimization
+        run: python src/04_optimization.py
+
       - name: Run verification tests
         run: python tests/test_project.py
