@@ -11,7 +11,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
-from report_parser import extract_text_from_pdf, parse_report
+from report_parser import extract_text_from_pdf, extract_text_from_image, parse_report
 
 MODEL_PATH = os.path.join("data", "processed", "best_model.joblib")
 SCALER_PATH = os.path.join("data", "processed", "scaler.joblib")
@@ -277,15 +277,21 @@ def main():
             st.image(os.path.join(PLOT_DIR, "3_correlation_heatmap.png"))
 
     with tab3:
-        st.subheader("Upload a blood test report (PDF)")
-        st.write("The app reads the report and fills in the values automatically. You can correct anything before predicting.")
-        report = st.file_uploader("Choose a PDF report", type=["pdf"])
+        st.subheader("Upload a blood test report")
+        st.write("Works with **PDFs, photos, and scanned images** (PNG/JPG). The app reads it automatically and fills in the values — you can correct anything before predicting.")
+        report = st.file_uploader("Choose a report (PDF or image)", type=["pdf", "png", "jpg", "jpeg"])
         if report is not None:
+            is_image = report.name.lower().endswith((".png", ".jpg", ".jpeg"))
+            if is_image:
+                st.image(report, caption="Uploaded report photo", width=400)
             with st.spinner("Reading report..."):
-                text = extract_text_from_pdf(report)
+                if is_image:
+                    text = extract_text_from_image(report)
+                else:
+                    text = extract_text_from_pdf(report)
                 parsed = parse_report(text)
             if not any(parsed.values()):
-                st.warning("Could not find recognizable values in this report. Check it's a text-based PDF (scanned images aren't supported).")
+                st.warning("Could not recognize the values in this report. Make sure the photo is clear, well-lit, and the text is readable (scans usually work best).")
                 st.text(text[:500])
             else:
                 st.success("Report read! Values extracted below — edit if needed.")

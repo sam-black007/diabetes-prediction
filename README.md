@@ -60,7 +60,7 @@ python -m streamlit run app.py
 The app has four tabs:
 - **Single patient** — enter a person's fasting and after-meal blood sugar plus other details, click *Predict* to see their diabetes risk with a **Low / Moderate / High** risk level, **health tips**, and a **downloadable PDF report**. Blood sugar is color-coded (normal / pre-diabetes / diabetes range). Past predictions are saved in the *Prediction history*
 - **Batch from CSV** — upload a file like `data/sample_patients.csv` and get predictions for everyone at once
-- **From test report** — upload a **PDF lab report** and the app reads it automatically, fills in the values, and predicts (you can correct anything first). Try `data/sample_report.pdf`
+- **From test report** — upload a **PDF, photo, or scanned image** of a lab report and the app reads it automatically (OCR), fills in the values, and predicts (you can correct anything first). Try `data/sample_report.pdf` or `data/sample_report.png`
 - **Results & charts** — model comparison, ROC curves, feature importance, confusion matrix, and heatmap
 
 > A trained model is already included, so the app works right away without training. Anyone else can do the same on their own laptop — no accounts or hosting needed.
@@ -162,6 +162,7 @@ data/
   diabetes.csv              raw dataset
   sample_patients.csv       example file for the app's batch tab
   sample_report.pdf         example lab report for the PDF tab
+  sample_report.png         example report photo for the image tab
   processed/                cleaned data, train/test sets, trained model
 plots/                      all the charts
 src/
