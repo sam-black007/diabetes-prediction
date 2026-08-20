@@ -1,5 +1,7 @@
 # Diabetes Prediction using Machine Learning
 
+[![Test](https://github.com/sam-black007/diabetes-prediction/actions/workflows/test.yml/badge.svg)](https://github.com/sam-black007/diabetes-prediction/actions)
+
 Predict whether a patient has diabetes based on medical records, using the **PIMA Indian Diabetes Dataset** (768 patients, 8 features).
 
 ## Tools
