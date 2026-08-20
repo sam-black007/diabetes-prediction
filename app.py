@@ -1,4 +1,5 @@
 import os
+import json
 import numpy as np
 import pandas as pd
 import joblib
@@ -6,6 +7,7 @@ import streamlit as st
 
 MODEL_PATH = os.path.join("data", "processed", "best_model.joblib")
 SCALER_PATH = os.path.join("data", "processed", "scaler.joblib")
+THRESHOLD_PATH = os.path.join("data", "processed", "model_threshold.json")
 CLEAN_PATH = os.path.join("data", "processed", "diabetes_clean.csv")
 PLOT_DIR = "plots"
 
@@ -31,9 +33,13 @@ def load_artifacts():
     scaler = joblib.load(SCALER_PATH)
     clean = pd.read_csv(CLEAN_PATH)
     medians = {c: clean[clean[c] != 0][c].median() for c in FEATURES}
-    return model, scaler, medians
+    threshold = 0.5
+    if os.path.exists(THRESHOLD_PATH):
+        with open(THRESHOLD_PATH) as f:
+            threshold = json.load(f).get("threshold", 0.5)
+    return model, scaler, medians, threshold
 
-def fix_and_predict(values, model, scaler, medians):
+def fix_and_predict(values, model, scaler, medians, threshold):
     row = []
     for feature in FEATURES:
         val = values[feature]
@@ -42,7 +48,7 @@ def fix_and_predict(values, model, scaler, medians):
         row.append(val)
     scaled = scaler.transform(pd.DataFrame([row], columns=FEATURES))
     prob = model.predict_proba(scaled)[0][1]
-    pred = int(model.predict(scaled)[0])
+    pred = int(prob >= threshold)
     return pred, prob
 
 def show_result(pred, prob):
@@ -58,7 +64,7 @@ def main():
     st.title("🩺 Diabetes Prediction")
     st.markdown("Predict diabetes risk from medical records using a tuned **Random Forest** model trained on the PIMA Indian Diabetes dataset (best accuracy **~78%**).")
 
-    model, scaler, medians = load_artifacts()
+    model, scaler, medians, threshold = load_artifacts()
 
     tab1, tab2, tab3 = st.tabs(["Single patient", "Batch from CSV", "Results & charts"])
 
@@ -75,9 +81,9 @@ def main():
                     values[feature] = st.slider(feature, lo, hi, (lo + hi) // 2, step)
 
         if st.button("Predict diabetes risk", type="primary"):
-            pred, prob = fix_and_predict(values, model, scaler, medians)
+            pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
             show_result(pred, prob)
-            st.caption("Note: values entered as 0 (impossible) are auto-replaced with the dataset median.")
+            st.caption(f"Decision threshold: {threshold:.2f}. Values entered as 0 (impossible) are auto-replaced with the dataset median.")
 
     with tab2:
         st.subheader("Upload a CSV")
@@ -92,7 +98,7 @@ def main():
                 df_in = df[FEATURES]
                 preds, probs = [], []
                 for _, row in df_in.iterrows():
-                    pred, prob = fix_and_predict(row.to_dict(), model, scaler, medians)
+                    pred, prob = fix_and_predict(row.to_dict(), model, scaler, medians, threshold)
                     preds.append(pred)
                     probs.append(prob)
                 out = df.copy()

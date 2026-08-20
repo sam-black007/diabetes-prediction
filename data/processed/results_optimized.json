@@ -1,0 +1,74 @@
+{
+  "Logistic Regression (baseline)": {
+    "accuracy": 0.7077922077922078,
+    "precision": 0.6,
+    "recall": 0.5,
+    "f1": 0.5454545454545454,
+    "auc": 0.812962962962963,
+    "threshold": 0.5
+  },
+  "SVM (baseline)": {
+    "accuracy": 0.7402597402597403,
+    "precision": 0.6521739130434783,
+    "recall": 0.5555555555555556,
+    "f1": 0.6,
+    "auc": 0.7963888888888889,
+    "threshold": 0.5
+  },
+  "Random Forest (baseline)": {
+    "accuracy": 0.7792207792207793,
+    "precision": 0.7083333333333334,
+    "recall": 0.6296296296296297,
+    "f1": 0.6666666666666666,
+    "auc": 0.8178703703703704,
+    "threshold": 0.5
+  },
+  "Logistic Regression (balanced)": {
+    "accuracy": 0.7337662337662337,
+    "precision": 0.6031746031746031,
+    "recall": 0.7037037037037037,
+    "f1": 0.6495726495726496,
+    "auc": 0.8125925925925926,
+    "threshold": 0.5
+  },
+  "SVM (balanced)": {
+    "accuracy": 0.7467532467532467,
+    "precision": 0.6595744680851063,
+    "recall": 0.5740740740740741,
+    "f1": 0.6138613861386139,
+    "auc": 0.8138888888888889,
+    "threshold": 0.5
+  },
+  "Random Forest (balanced)": {
+    "accuracy": 0.7402597402597403,
+    "precision": 0.64,
+    "recall": 0.5925925925925926,
+    "f1": 0.6153846153846154,
+    "auc": 0.8146296296296296,
+    "threshold": 0.5
+  },
+  "Gradient Boosting": {
+    "accuracy": 0.7597402597402597,
+    "precision": 0.6888888888888889,
+    "recall": 0.5740740740740741,
+    "f1": 0.6262626262626263,
+    "auc": 0.8307407407407407,
+    "threshold": 0.5
+  },
+  "Random Forest (tuned+balanced)": {
+    "accuracy": 0.7727272727272727,
+    "precision": 0.6666666666666666,
+    "recall": 0.7037037037037037,
+    "f1": 0.6846846846846847,
+    "auc": 0.8342592592592593,
+    "threshold": 0.5
+  },
+  "Gradient Boosting (tuned)": {
+    "accuracy": 0.7402597402597403,
+    "precision": 0.6590909090909091,
+    "recall": 0.5370370370370371,
+    "f1": 0.5918367346938775,
+    "auc": 0.8231481481481482,
+    "threshold": 0.5
+  }
+}
