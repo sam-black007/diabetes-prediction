@@ -6,3 +6,5 @@ seaborn==0.13.2
 streamlit==1.62.0
 joblib==1.4.2
 pypdf==6.16.1
+xgboost==3.2.0
+imbalanced-learn==0.14.2

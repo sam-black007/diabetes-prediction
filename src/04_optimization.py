@@ -2,14 +2,19 @@ import numpy as np
 import os
 import json
 import joblib
+import xgboost as xgb
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import (
+    RandomForestClassifier, GradientBoostingClassifier, StackingClassifier,
+)
 from sklearn.model_selection import GridSearchCV, cross_val_predict
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
     roc_auc_score, roc_curve,
 )
+from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline as ImbPipeline
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -101,12 +106,49 @@ def main():
     report("Gradient Boosting (tuned)", tuned_gb.best_estimator_, X_test, y_test, results=results)
 
     print("=" * 60)
+    print("STEP 3.5 - Stronger models: XGBoost, SMOTE, Stacking")
+    print("=" * 60)
+
+    xgb_plain = xgb.XGBClassifier(
+        eval_metric="logloss", n_estimators=200, max_depth=3,
+        learning_rate=0.05, subsample=0.8, colsample_bytree=0.8,
+        scale_pos_weight=(y_train == 0).sum() / (y_train == 1).sum(),
+        random_state=42, n_jobs=-1,
+    ).fit(X_train, y_train)
+    report("XGBoost (class-weighted)", xgb_plain, X_test, y_test, results=results)
+
+    xgb_smote = ImbPipeline([
+        ("smote", SMOTE(random_state=42)),
+        ("clf", xgb.XGBClassifier(
+            eval_metric="logloss", n_estimators=200, max_depth=3,
+            learning_rate=0.05, subsample=0.8, colsample_bytree=0.8,
+            random_state=42, n_jobs=-1,
+        )),
+    ]).fit(X_train, y_train)
+    report("XGBoost + SMOTE", xgb_smote, X_test, y_test, results=results, proba_model=xgb_smote)
+
+    stack = StackingClassifier(
+        estimators=[
+            ("lr", LogisticRegression(max_iter=2000, class_weight="balanced", random_state=42)),
+            ("svm", SVC(C=1, kernel="rbf", class_weight="balanced", probability=True, random_state=42)),
+            ("rf", RandomForestClassifier(n_estimators=200, max_depth=10, class_weight="balanced", random_state=42)),
+            ("gb", GradientBoostingClassifier(n_estimators=100, learning_rate=0.05, max_depth=3, random_state=42)),
+        ],
+        final_estimator=LogisticRegression(max_iter=2000, random_state=42),
+        cv=5, n_jobs=-1,
+    ).fit(X_train, y_train)
+    report("Stacking ensemble (4 models)", stack, X_test, y_test, results=results)
+
+    print("=" * 60)
     print("STEP 4 - Decision-threshold tuning (to boost F1/Recall)")
     print("=" * 60)
 
     best_candidates = {
         "Random Forest (tuned+balanced)": tuned_rf.best_estimator_,
         "Gradient Boosting (tuned)": tuned_gb.best_estimator_,
+        "XGBoost (class-weighted)": xgb_plain,
+        "XGBoost + SMOTE": xgb_smote,
+        "Stacking ensemble (4 models)": stack,
     }
     improved = {}
     for name, model in best_candidates.items():
