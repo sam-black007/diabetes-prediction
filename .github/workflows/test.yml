@@ -1,0 +1,37 @@
+name: Test Diabetes Prediction
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run preprocessing
+        run: python src/01_preprocessing.py
+
+      - name: Run EDA
+        run: python src/02_eda.py
+
+      - name: Run model training
+        run: python src/03_model_training.py
+
+      - name: Run verification tests
+        run: python tests/test_project.py
