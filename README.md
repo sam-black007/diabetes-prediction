@@ -7,38 +7,67 @@ A simple machine learning project that predicts whether a person has diabetes ba
 ## What I used
 Python, Pandas, NumPy, Scikit-Learn, Matplotlib, Seaborn and Streamlit. I trained and compared three models — **Logistic Regression, SVM, and Random Forest** — and picked the best one.
 
-## How to run it on your laptop
+## Step-by-step setup
 
-**1. Download the project:**
+**Step 1 — Install Python (only if you don't have it)**
+- Download from https://www.python.org/downloads/ (choose 3.10 or newer)
+- During installation, tick **"Add Python to PATH"** — this is important
+- Check it worked. Open a terminal (cmd on Windows / Terminal on Mac) and type:
+```bash
+python --version
+```
+You should see something like `Python 3.11.9`.
+
+**Step 2 — Download the project**
 ```bash
 git clone https://github.com/sam-black007/diabetes-prediction
 cd diabetes-prediction
 ```
+(No Git? Just download the ZIP from the repo page → *Code* → *Download ZIP* → unzip it, then open a terminal inside that folder.)
 
-**2. Install the required packages:**
+**Step 3 — Install the packages**
 ```bash
 pip install -r requirements.txt
 ```
+You'll see lots of "Downloading / Successfully installed" lines. This installs Pandas, NumPy, Scikit-Learn, Matplotlib, Seaborn, and Streamlit.
 
-**3. (Optional) Train the models yourself:**
-```bash
-python src/01_preprocessing.py   # cleans the data and splits it
-python src/02_eda.py             # makes the charts
-python src/03_model_training.py  # trains and compares the models
-```
-
-**4. Start the web app:**
+**Step 4 — Start the web app**
 ```bash
 streamlit run app.py
 ```
-Your browser will open **http://localhost:8501**. To close it, press `Ctrl + C` in the terminal.
+Your browser opens **http://localhost:8501** automatically. To stop it, press `Ctrl + C` in the terminal.
 
+## How to use the app
 The app has three tabs:
 - **Single patient** — move the sliders to enter a person's details and click *Predict* to see their diabetes risk
 - **Batch from CSV** — upload a file like `data/sample_patients.csv` and get predictions for everyone at once
 - **Results & charts** — the charts and confusion matrix from this project
 
 > A trained model is already included, so the app works right away without training. Anyone else can do the same on their own laptop — no accounts or hosting needed.
+
+## Full work process (how the project actually runs)
+
+If you want to run everything yourself — from raw data to final result — do it in this order:
+
+```bash
+python src/01_preprocessing.py   # 1. clean + normalize + split
+python src/02_eda.py             # 2. generate the charts
+python src/03_model_training.py  # 3. train + tune + compare models
+streamlit run app.py             # 4. open the web app
+```
+
+What each step does and what you should see:
+
+1. **`01_preprocessing.py`** — loads the raw data, fixes the impossible `0` values, normalizes the features, splits into 80% training / 20% testing. It prints how many `0`s were fixed in each column and finishes with *"Saved scaler to data/processed/scaler.joblib"*.
+2. **`02_eda.py`** — draws the charts (histograms, correlation heatmap, boxplots) and saves them into the `plots/` folder. It prints the class balance (500 no-diabetes, 268 diabetes).
+3. **`03_model_training.py`** — trains Logistic Regression, SVM, and Random Forest, tunes them with `GridSearchCV`, and prints a report for each. It finishes by printing *"BEST MODEL (by F1-score): Random Forest (tuned) -> F1 = 0.6600"* and saves `best_model.joblib`.
+4. **`streamlit run app.py`** — opens the web app, which uses the saved model to make live predictions.
+
+**Testing everything (optional):** after the three scripts above, run
+```bash
+python tests/test_project.py
+```
+It checks 10 things (files exist, split sizes are right, Random Forest wins) and prints `10/10 checks passed`.
 
 ## What I did, step by step
 
