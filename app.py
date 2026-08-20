@@ -59,10 +59,42 @@ def show_result(pred, prob):
     st.progress(int(prob * 100))
     st.write(f"**Prediction probability of diabetes: {prob:.1%}**")
 
+def glucose_interpretation(value, kind):
+    if kind == "fasting":
+        if value < 100:
+            return "Normal", "#2E7D32"
+        elif value < 126:
+            return "Pre-diabetes (impaired fasting glucose)", "#F9A825"
+        return "Diabetes range", "#C62828"
+    else:
+        if value < 140:
+            return "Normal", "#2E7D32"
+        elif value < 200:
+            return "Pre-diabetes (impaired glucose tolerance)", "#F9A825"
+        return "Diabetes range", "#C62828"
+
+def glucose_panel():
+    st.markdown("#### Blood sugar test (mg/dL)")
+    fasting = st.number_input("Fasting blood sugar (after 8h no food)", min_value=0, max_value=400, value=100, step=1)
+    postmeal = st.number_input("Blood sugar 2 hours after a meal", min_value=0, max_value=500, value=140, step=1)
+    c1, c2 = st.columns(2)
+    for col, value, kind, label in [
+        (c1, fasting, "fasting", "Fasting"),
+        (c2, postmeal, "postmeal", "After-meal (2h)"),
+    ]:
+        with col:
+            category, color = glucose_interpretation(value, kind)
+            st.markdown(
+                f"**{label}:** <span style='color:{color};font-weight:bold'>{category}</span>",
+                unsafe_allow_html=True,
+            )
+    st.caption("Standard ranges: Fasting — normal <100, pre-diabetes 100–125, diabetes ≥126 | After-meal — normal <140, pre-diabetes 140–199, diabetes ≥200. The model uses the after-meal value.")
+    return postmeal
+
 def main():
     st.set_page_config(page_title="Diabetes Prediction", page_icon="🩺", layout="wide")
     st.title("🩺 Diabetes Prediction")
-    st.markdown("Predict diabetes risk from medical records using a tuned **Random Forest** model trained on the PIMA Indian Diabetes dataset (best accuracy **~78%**).")
+    st.markdown("Predict diabetes risk from medical records using a tuned **Gradient Boosting** model trained on the PIMA Indian Diabetes dataset (best accuracy **~77%**).")
 
     model, scaler, medians, threshold = load_artifacts()
 
@@ -71,8 +103,12 @@ def main():
     with tab1:
         st.subheader("Enter patient details")
         values = {}
+        values["Glucose"] = glucose_panel()
+        st.markdown("#### Other details")
         col1, col2 = st.columns(2)
         for i, feature in enumerate(FEATURES):
+            if feature == "Glucose":
+                continue
             lo, hi, step = RANGES[feature]
             with (col1 if i % 2 == 0 else col2):
                 if feature in ["BMI", "DiabetesPedigreeFunction"]:
