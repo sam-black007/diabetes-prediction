@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import json
+import joblib
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
 from sklearn.ensemble import RandomForestClassifier
@@ -87,6 +88,9 @@ if __name__ == "__main__":
     print("=" * 50)
     best_name = max(results, key=lambda k: results[k]["f1"])
     print(f"\nBEST MODEL (by F1-score): {best_name} -> F1 = {results[best_name]['f1']:.4f}")
+
+    joblib.dump(rf, os.path.join(PROCESSED_DIR, "best_model.joblib"))
+    print("Best model saved to", os.path.join(PROCESSED_DIR, "best_model.joblib"))
 
     with open(os.path.join(PROCESSED_DIR, "results.json"), "w") as f:
         json.dump(results, f, indent=2)

@@ -15,6 +15,16 @@ python src/02_eda.py             # visualizations
 python src/03_model_training.py  # train + tune + evaluate
 ```
 
+## Web app (local)
+Interactive webpage to predict diabetes from patient data:
+```bash
+pip install -r requirements.txt
+python src/01_preprocessing.py   # one-time: builds model + scaler
+python src/03_model_training.py
+streamlit run app.py             # opens http://localhost:8501
+```
+The app has three tabs: **single patient** (sliders → live prediction with risk %), **batch from CSV** (upload a file like `data/sample_patients.csv`), and **results & charts**.
+
 ## Pipeline
 1. **Preprocessing** — impossible zero values in Glucose, BloodPressure, SkinThickness, Insulin, BMI are replaced with the column median; features are standardized (mean 0, std 1); data is split 80/20 (stratified).
 2. **EDA** — outcome distribution, feature histograms by class, correlation heatmap, boxplots.
