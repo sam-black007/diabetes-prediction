@@ -58,10 +58,10 @@ Your browser opens **http://localhost:8501** automatically. To stop it, press `C
 
 ## How to use the app
 The app has four tabs:
-- **Single patient** — enter a person's fasting and after-meal blood sugar plus other details, click *Predict* to see their diabetes risk. Blood sugar is color-coded (normal / pre-diabetes / diabetes range)
+- **Single patient** — enter a person's fasting and after-meal blood sugar plus other details, click *Predict* to see their diabetes risk with a **Low / Moderate / High** risk level, **health tips**, and a **downloadable PDF report**. Blood sugar is color-coded (normal / pre-diabetes / diabetes range). Past predictions are saved in the *Prediction history*
 - **Batch from CSV** — upload a file like `data/sample_patients.csv` and get predictions for everyone at once
 - **From test report** — upload a **PDF lab report** and the app reads it automatically, fills in the values, and predicts (you can correct anything first). Try `data/sample_report.pdf`
-- **Results & charts** — the charts and confusion matrix from this project
+- **Results & charts** — model comparison, ROC curves, feature importance, confusion matrix, and heatmap
 
 > A trained model is already included, so the app works right away without training. Anyone else can do the same on their own laptop — no accounts or hosting needed.
 
@@ -143,6 +143,18 @@ The final app uses **Gradient Boosting** with a tuned decision threshold of **0.
 **ROC curves of the optimized models**
 
 ![ROC curves](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/6_roc_curves.png)
+
+**What drives the prediction (feature importance)**
+
+![Feature importance](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/7_feature_importance.png)
+
+**Glucose vs BMI**
+
+![Glucose vs BMI](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/5_glucose_vs_bmi.png)
+
+**Diabetes rate by age group**
+
+![Diabetes rate by age](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/6_diabetes_rate_by_age.png)
 
 ## Project structure
 ```
