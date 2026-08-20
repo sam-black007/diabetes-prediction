@@ -31,6 +31,27 @@ python src/03_model_training.py  # train + tune + evaluate
 
 **Best model:** Random Forest (100 trees, no depth limit) — best accuracy and best F1-score.
 
+## Results gallery
+
+**Model comparison**
+
+![Model comparison](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/5_model_comparison.png)
+
+**Best model — Random Forest confusion matrix**
+
+![Random Forest confusion matrix](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/cm_random_forest_%28tuned%29.png)
+
+**Feature correlation heatmap**
+
+![Correlation heatmap](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/3_correlation_heatmap.png)
+
+## Automated testing (CI)
+
+Every push to `main` runs the whole pipeline on GitHub's servers and verifies the results. Status shows in the **Actions** tab:
+
+- https://github.com/sam-black007/diabetes-prediction/actions
+- Click a run → expand **Run verification tests** to see the per-check output (e.g. `10/10 checks passed`)
+
 ## Project structure
 ```
 data/
