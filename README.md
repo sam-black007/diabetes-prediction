@@ -5,25 +5,37 @@
 Predict whether a patient has diabetes based on medical records, using the **PIMA Indian Diabetes Dataset** (768 patients, 8 features).
 
 ## Tools
-Python, Pandas, NumPy, Scikit-Learn (SVM, Logistic Regression, Random Forest), Matplotlib, Seaborn
+Python, Pandas, NumPy, Scikit-Learn (SVM, Logistic Regression, Random Forest), Matplotlib, Seaborn, Streamlit
 
-## How to run
+## How to run (your laptop, no hosting needed)
+
+**1. Download the project** (or run this in cmd):
+```bash
+git clone https://github.com/sam-black007/diabetes-prediction
+cd diabetes-prediction
+```
+
+**2. Install dependencies** (one time):
 ```bash
 pip install -r requirements.txt
+```
+
+**3. Train the models** (optional — a trained model is already included):
+```bash
 python src/01_preprocessing.py   # clean + normalize + split
 python src/02_eda.py             # visualizations
 python src/03_model_training.py  # train + tune + evaluate
 ```
 
-## Web app (local)
-Interactive webpage to predict diabetes from patient data:
+**4. Start the web app:**
 ```bash
-pip install -r requirements.txt
-python src/01_preprocessing.py   # one-time: builds model + scaler
-python src/03_model_training.py
-streamlit run app.py             # opens http://localhost:8501
+streamlit run app.py
 ```
+Your browser opens **http://localhost:8501**. To stop it, press `Ctrl + C` in the cmd window.
+
 The app has three tabs: **single patient** (sliders → live prediction with risk %), **batch from CSV** (upload a file like `data/sample_patients.csv`), and **results & charts**.
+
+> **Anyone else can do the same:** clone the repo, `pip install -r requirements.txt`, then `streamlit run app.py` — no account, no hosting, no internet needed after download.
 
 ## Pipeline
 1. **Preprocessing** — impossible zero values in Glucose, BloodPressure, SkinThickness, Insulin, BMI are replaced with the column median; features are standardized (mean 0, std 1); data is split 80/20 (stratified).
@@ -66,12 +78,17 @@ Every push to `main` runs the whole pipeline on GitHub's servers and verifies th
 ```
 data/
   diabetes.csv              raw dataset
-  processed/                cleaned data, train/test arrays, results.json
+  sample_patients.csv       example file for the app's batch tab
+  processed/                cleaned data, train/test arrays, model, results.json
 plots/                      all generated charts
 src/
   01_preprocessing.py
   02_eda.py
   03_model_training.py
+app.py                      local web app (streamlit run app.py)
+tests/
+  test_project.py           CI verification checks
+.github/workflows/test.yml  automated testing on push
 requirements.txt
 README.md
 ```
