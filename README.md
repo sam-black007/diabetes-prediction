@@ -117,7 +117,12 @@ It checks 10 things (files exist, split sizes are right, Random Forest wins) and
 |-------|----------|--------|----------|---------|
 | Random Forest (tuned + balanced) | 0.773 | 0.704 | 0.685 | 0.834 |
 | Random Forest + threshold tuning | 0.760 | 0.722 | 0.678 | 0.834 |
+| XGBoost + threshold tuning | 0.734 | 0.852 | 0.692 | 0.831 |
+| XGBoost + SMOTE + threshold tuning | 0.734 | 0.833 | 0.687 | 0.827 |
+| Stacking ensemble + threshold tuning | 0.747 | 0.796 | 0.688 | 0.823 |
 | **Gradient Boosting + threshold tuning** | **0.766** | **0.815** | **0.710** | **0.823** |
+
+I also tried XGBoost, SMOTE balancing, and a stacking ensemble. They didn't beat Gradient Boosting on this dataset — the PIMA data has an accuracy ceiling around 78%, so the biggest improvement would come from a larger/better dataset.
 
 The final app uses **Gradient Boosting** with a tuned decision threshold of **0.31** — it now correctly catches **81% of diabetic patients** (up from 63%).
 
