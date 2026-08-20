@@ -1,11 +1,47 @@
 import re
-from pypdf import PdfReader
 import io
+from pypdf import PdfReader
+
+try:
+    from rapidocr_onnxruntime import RapidOCR
+    _ocr = None
+    def _get_ocr():
+        global _ocr
+        if _ocr is None:
+            _ocr = RapidOCR()
+        return _ocr
+    OCR_AVAILABLE = True
+except Exception:
+    OCR_AVAILABLE = False
+
+def _ocr_image_bytes(image_bytes):
+    """OCR an image (PNG/JPG/...) and return the recognized text."""
+    if not OCR_AVAILABLE:
+        return ""
+    result, _ = _get_ocr()(image_bytes)
+    if not result:
+        return ""
+    return "\n".join(line[1] for line in result)
 
 def extract_text_from_pdf(uploaded_file):
-    reader = PdfReader(io.BytesIO(uploaded_file.read()))
+    content = uploaded_file.read()
+    reader = PdfReader(io.BytesIO(content))
     text = "\n".join(page.extract_text() or "" for page in reader.pages)
+    if len(text.strip()) < 20 and OCR_AVAILABLE:
+        # Scanned PDF: render pages to images and OCR them
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument(content)
+        pages_text = []
+        for page in pdf:
+            bitmap = page.render(scale=2.5).to_pil()
+            buf = io.BytesIO()
+            bitmap.save(buf, format="PNG")
+            pages_text.append(_ocr_image_bytes(buf.getvalue()))
+        text = "\n".join(pages_text)
     return text
+
+def extract_text_from_image(uploaded_file):
+    return _ocr_image_bytes(uploaded_file.read())
 
 def _first_number(pattern, text):
     m = re.search(pattern, text, re.IGNORECASE)
