@@ -23,6 +23,11 @@ PROCESSED_DIR = "data/processed"
 PLOT_DIR = "plots"
 os.makedirs(PLOT_DIR, exist_ok=True)
 
+FEATURE_LABELS = [
+    "Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
+    "Insulin", "BMI", "DiabetesPedigreeFunction", "Age",
+]
+
 def load_data():
     X_train = np.load(os.path.join(PROCESSED_DIR, "X_train.npy"))
     X_test = np.load(os.path.join(PROCESSED_DIR, "X_test.npy"))
@@ -192,6 +197,18 @@ def main():
     plt.savefig(os.path.join(PLOT_DIR, "6_roc_curves.png"))
     plt.close()
     print("ROC curves saved to", os.path.join(PLOT_DIR, "6_roc_curves.png"))
+
+    # Feature importance of the best model
+    plt.figure(figsize=(8, 5))
+    importances = best_model.feature_importances_
+    order = np.argsort(importances)
+    plt.barh(np.array(FEATURE_LABELS)[order], importances[order])
+    plt.xlabel("Importance")
+    plt.title("Feature Importance - Best Model")
+    plt.tight_layout()
+    plt.savefig(os.path.join(PLOT_DIR, "7_feature_importance.png"))
+    plt.close()
+    print("Feature importance saved to", os.path.join(PLOT_DIR, "7_feature_importance.png"))
 
 if __name__ == "__main__":
     main()

@@ -61,6 +61,32 @@ def boxplots_by_outcome(df):
     fig.savefig(os.path.join(PLOT_DIR, "4_boxplots_by_outcome.png"))
     plt.show()
 
+def scatter_glucose_bmi(df):
+    plt.figure(figsize=(8, 6))
+    for outcome, color, label in [(0, "#4C72B0", "No Diabetes"), (1, "#C44E52", "Diabetes")]:
+        subset = df[df["Outcome"] == outcome]
+        plt.scatter(subset["Glucose"], subset["BMI"], alpha=0.5, color=color, label=label)
+    plt.xlabel("Glucose")
+    plt.ylabel("BMI")
+    plt.title("Glucose vs BMI (diabetic patients cluster differently)")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(PLOT_DIR, "5_glucose_vs_bmi.png"))
+    plt.show()
+
+def age_group_analysis(df):
+    bins = [20, 30, 40, 50, 60, 100]
+    labels = ["20-29", "30-39", "40-49", "50-59", "60+"]
+    df["AgeGroup"] = pd.cut(df["Age"], bins=bins, labels=labels, right=False)
+    rate = df.groupby("AgeGroup", observed=False)["Outcome"].mean() * 100
+    plt.figure(figsize=(8, 5))
+    rate.plot(kind="bar", color="#4C72B0")
+    plt.ylabel("Diabetes rate (%)")
+    plt.title("Diabetes Rate by Age Group")
+    plt.tight_layout()
+    plt.savefig(os.path.join(PLOT_DIR, "6_diabetes_rate_by_age.png"))
+    plt.show()
+
 if __name__ == "__main__":
     df = pd.read_csv(CLEAN_DATA)
     print("Data shape:", df.shape)
@@ -71,4 +97,6 @@ if __name__ == "__main__":
     feature_histograms(df)
     correlation_heatmap(df)
     boxplots_by_outcome(df)
+    scatter_glucose_bmi(df)
+    age_group_analysis(df)
     print("\nPlots saved to", PLOT_DIR)

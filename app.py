@@ -1,10 +1,14 @@
 import os
 import json
 import sys
+import io
+from datetime import datetime
 import numpy as np
 import pandas as pd
 import joblib
 import streamlit as st
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 from report_parser import extract_text_from_pdf, parse_report
@@ -13,6 +17,7 @@ MODEL_PATH = os.path.join("data", "processed", "best_model.joblib")
 SCALER_PATH = os.path.join("data", "processed", "scaler.joblib")
 THRESHOLD_PATH = os.path.join("data", "processed", "model_threshold.json")
 CLEAN_PATH = os.path.join("data", "processed", "diabetes_clean.csv")
+HISTORY_PATH = os.path.join("data", "processed", "prediction_history.json")
 PLOT_DIR = "plots"
 
 FEATURES = [
@@ -55,13 +60,120 @@ def fix_and_predict(values, model, scaler, medians, threshold):
     pred = int(prob >= threshold)
     return pred, prob
 
-def show_result(pred, prob):
+def risk_level(prob, threshold):
+    if prob < threshold:
+        return "Low risk", "#2E7D32"
+    elif prob < 0.6:
+        return "Moderate risk", "#F9A825"
+    return "High risk", "#C62828"
+
+def health_tips(values):
+    tips = []
+    if values["Glucose"] >= 140:
+        tips.append("Your after-meal glucose is high — talk to a doctor and limit sugary foods.")
+    elif values["Glucose"] >= 126:
+        tips.append("Your glucose is above normal — watch your carbohydrate intake.")
+    if values["BMI"] >= 30:
+        tips.append("Your BMI is in the obese range — even modest weight loss lowers diabetes risk.")
+    elif values["BMI"] >= 25:
+        tips.append("Your BMI is slightly high — regular exercise and a balanced diet help.")
+    if values["BloodPressure"] >= 90:
+        tips.append("Your blood pressure is elevated — reduce salt and get it checked regularly.")
+    if values["Age"] >= 50:
+        tips.append("Diabetes risk rises with age — annual screening is recommended.")
+    if values["DiabetesPedigreeFunction"] >= 0.5:
+        tips.append("Your family history score is raised — be extra mindful of lifestyle habits.")
+    if not tips:
+        tips.append("Your values look healthy. Keep up good sleep, exercise, and a balanced diet.")
+    return tips
+
+def save_prediction(record):
+    records = []
+    if os.path.exists(HISTORY_PATH):
+        try:
+            with open(HISTORY_PATH) as f:
+                records = json.load(f)
+        except Exception:
+            records = []
+    records.append(record)
+    records = records[-50:]
+    with open(HISTORY_PATH, "w") as f:
+        json.dump(records, f, indent=2)
+
+def render_history():
+    if os.path.exists(HISTORY_PATH):
+        with open(HISTORY_PATH) as f:
+            records = json.load(f)
+        if records:
+            with st.expander(f"Prediction history ({len(records)} saved)"):
+                st.dataframe(pd.DataFrame(records[::-1]))
+
+def make_pdf(pred, prob, values, threshold):
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    w, h = A4
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(50, h - 70, "Diabetes Risk Report")
+    c.setFont("Helvetica", 11)
+    c.drawString(50, h - 95, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(50, h - 130, "Patient values")
+    c.setFont("Helvetica", 11)
+    labels = {
+        "Glucose": "After-meal glucose (mg/dL)", "Pregnancies": "Pregnancies",
+        "BloodPressure": "Blood pressure (systolic)", "SkinThickness": "Skin thickness",
+        "Insulin": "Insulin (uIU/mL)", "BMI": "BMI",
+        "DiabetesPedigreeFunction": "Family history score", "Age": "Age",
+    }
+    y = h - 155
+    for f in FEATURES:
+        c.drawString(60, y, f"{labels[f]}: {values[f]:.1f}")
+        y -= 18
+    y -= 10
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(50, y, f"Result: {'Diabetes likely' if pred == 1 else 'No diabetes'} ({risk_level(prob, threshold)[0]})")
+    y -= 18
+    c.setFont("Helvetica", 11)
+    c.drawString(50, y, f"Probability of diabetes: {prob:.1%}")
+    y -= 30
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, "Health tips")
+    c.setFont("Helvetica", 10)
+    for tip in health_tips(values):
+        y -= 16
+        c.drawString(60, y, f"- {tip}")
+    c.save()
+    return buf.getvalue()
+
+def show_result(pred, prob, values, threshold):
     if pred == 1:
-        st.error(f"### Result: Diabetes likely")
+        st.error("### Result: Diabetes likely")
     else:
-        st.success(f"### Result: No diabetes")
+        st.success("### Result: No diabetes")
+    level, color = risk_level(prob, threshold)
+    st.markdown(f"**Risk level:** <span style='color:{color};font-weight:bold'>{level}</span>", unsafe_allow_html=True)
     st.progress(int(prob * 100))
-    st.write(f"**Prediction probability of diabetes: {prob:.1%}**")
+    st.write(f"**Probability of diabetes: {prob:.1%}**")
+
+    st.markdown("#### Health tips")
+    for tip in health_tips(values):
+        st.write(f"- {tip}")
+
+    record = {
+        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "result": "Diabetes likely" if pred == 1 else "No diabetes",
+        "risk": f"{prob:.1%}",
+        **{k: round(float(v), 2) for k, v in values.items()},
+    }
+    save_prediction(record)
+
+    pdf_bytes = make_pdf(pred, prob, values, threshold)
+    st.download_button(
+        "Download result as PDF", data=pdf_bytes,
+        file_name=f"diabetes_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+        mime="application/pdf",
+    )
+    render_history()
 
 def glucose_interpretation(value, kind):
     if kind == "fasting":
@@ -122,7 +234,7 @@ def main():
 
         if st.button("Predict diabetes risk", type="primary"):
             pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
-            show_result(pred, prob)
+            show_result(pred, prob, values, threshold)
             st.caption(f"Decision threshold: {threshold:.2f}. Values entered as 0 (impossible) are auto-replaced with the dataset median.")
 
     with tab2:
@@ -151,6 +263,12 @@ def main():
         st.subheader("Model comparison")
         if os.path.exists(os.path.join(PLOT_DIR, "5_model_comparison.png")):
             st.image(os.path.join(PLOT_DIR, "5_model_comparison.png"))
+        st.subheader("ROC curves")
+        if os.path.exists(os.path.join(PLOT_DIR, "6_roc_curves.png")):
+            st.image(os.path.join(PLOT_DIR, "6_roc_curves.png"))
+        st.subheader("Feature importance (what drives the prediction)")
+        if os.path.exists(os.path.join(PLOT_DIR, "7_feature_importance.png")):
+            st.image(os.path.join(PLOT_DIR, "7_feature_importance.png"))
         st.subheader("Confusion matrix — Random Forest")
         if os.path.exists(os.path.join(PLOT_DIR, "cm_random_forest_(tuned).png")):
             st.image(os.path.join(PLOT_DIR, "cm_random_forest_(tuned).png"))
@@ -201,7 +319,7 @@ def main():
                         "Age": inputs["Age"],
                     }
                     pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
-                    show_result(pred, prob)
+                    show_result(pred, prob, values, threshold)
                     st.caption(f"Decision threshold: {threshold:.2f}.")
 
 if __name__ == "__main__":
