@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+import joblib
 import os
 
 RAW_DATA = os.path.join("data", "diabetes.csv")
@@ -52,7 +53,9 @@ def split_and_normalize(df, test_size=0.2, random_state=42):
     np.save(os.path.join(PROCESSED_DIR, "y_test.npy"), y_test.to_numpy())
 
     df.to_csv(os.path.join(PROCESSED_DIR, "diabetes_clean.csv"), index=False)
+    joblib.dump(scaler, os.path.join(PROCESSED_DIR, "scaler.joblib"))
     print("[5] Saved cleaned dataset + train/test arrays to", PROCESSED_DIR)
+    print("[6] Saved scaler to", os.path.join(PROCESSED_DIR, "scaler.joblib"))
     return X_train_scaled, X_test_scaled, y_train, y_test, scaler
 
 if __name__ == "__main__":
