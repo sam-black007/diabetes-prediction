@@ -1,9 +1,13 @@
 import os
 import json
+import sys
 import numpy as np
 import pandas as pd
 import joblib
 import streamlit as st
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
+from report_parser import extract_text_from_pdf, parse_report
 
 MODEL_PATH = os.path.join("data", "processed", "best_model.joblib")
 SCALER_PATH = os.path.join("data", "processed", "scaler.joblib")
@@ -98,7 +102,7 @@ def main():
 
     model, scaler, medians, threshold = load_artifacts()
 
-    tab1, tab2, tab3 = st.tabs(["Single patient", "Batch from CSV", "Results & charts"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Single patient", "Batch from CSV", "From test report", "Results & charts"])
 
     with tab1:
         st.subheader("Enter patient details")
@@ -143,7 +147,7 @@ def main():
                 st.dataframe(out)
                 st.success(f"Processed {len(out)} patients: {sum(preds)} predicted diabetic.")
 
-    with tab3:
+    with tab4:
         st.subheader("Model comparison")
         if os.path.exists(os.path.join(PLOT_DIR, "5_model_comparison.png")):
             st.image(os.path.join(PLOT_DIR, "5_model_comparison.png"))
@@ -153,6 +157,52 @@ def main():
         st.subheader("Feature correlation")
         if os.path.exists(os.path.join(PLOT_DIR, "3_correlation_heatmap.png")):
             st.image(os.path.join(PLOT_DIR, "3_correlation_heatmap.png"))
+
+    with tab3:
+        st.subheader("Upload a blood test report (PDF)")
+        st.write("The app reads the report and fills in the values automatically. You can correct anything before predicting.")
+        report = st.file_uploader("Choose a PDF report", type=["pdf"])
+        if report is not None:
+            with st.spinner("Reading report..."):
+                text = extract_text_from_pdf(report)
+                parsed = parse_report(text)
+            if not any(parsed.values()):
+                st.warning("Could not find recognizable values in this report. Check it's a text-based PDF (scanned images aren't supported).")
+                st.text(text[:500])
+            else:
+                st.success("Report read! Values extracted below — edit if needed.")
+                st.markdown("#### Extracted values")
+                defaults = {
+                    "Fasting blood sugar (mg/dL)": parsed.get("fasting", 100) or 100,
+                    "After-meal blood sugar (mg/dL)": parsed.get("postmeal", 140) or 140,
+                    "BMI": parsed.get("bmi", medians["BMI"]) or medians["BMI"],
+                    "Blood pressure (systolic)": parsed.get("blood_pressure", medians["BloodPressure"]) or medians["BloodPressure"],
+                    "Age": parsed.get("age", 45) or 45,
+                    "Insulin": parsed.get("insulin", medians["Insulin"]) or medians["Insulin"],
+                    "Pregnancies": parsed.get("pregnancies", 1) or 1,
+                    "Skin thickness": parsed.get("skin_thickness", medians["SkinThickness"]) or medians["SkinThickness"],
+                }
+                c1, c2 = st.columns(2)
+                inputs = {}
+                for i, (label, val) in enumerate(defaults.items()):
+                    with (c1 if i % 2 == 0 else c2):
+                        inputs[label] = st.number_input(label, value=float(val), step=1.0)
+                dpf = st.slider("DiabetesPedigreeFunction (family history)", 0.0, 2.5, 0.5, 0.01)
+
+                if st.button("Predict from report", type="primary"):
+                    values = {
+                        "Pregnancies": inputs["Pregnancies"],
+                        "Glucose": inputs["After-meal blood sugar (mg/dL)"],
+                        "BloodPressure": inputs["Blood pressure (systolic)"],
+                        "SkinThickness": inputs["Skin thickness"],
+                        "Insulin": inputs["Insulin"],
+                        "BMI": inputs["BMI"],
+                        "DiabetesPedigreeFunction": dpf,
+                        "Age": inputs["Age"],
+                    }
+                    pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
+                    show_result(pred, prob)
+                    st.caption(f"Decision threshold: {threshold:.2f}.")
 
 if __name__ == "__main__":
     main()
