@@ -142,6 +142,36 @@ In the end **Gradient Boosting** won, with a tuned threshold of **0.31**. The bi
 **81% of diabetic patients**, up from 63% — meaning far fewer real cases slip through. (PIMA tops out
 around 78% accuracy, so the next leap would need a bigger, richer dataset.)
 
+## How accurate is it, really?
+
+These aren't estimates — they're computed by running the final model on the **154-patient test set**
+(54 of them actually diabetic) at our threshold of 0.31:
+
+| Metric | Score | What it means |
+|--------|-------|---------------|
+| Accuracy | 76.6% | overall correct calls |
+| Sensitivity (recall) | 81.5% | of people who truly have diabetes, we caught 81.5% |
+| Specificity | 74.0% | of people who *don't*, we correctly cleared 74% |
+| Precision (PPV) | 62.9% | when we say "diabetes likely", ~63% truly have it |
+| NPV | 88.1% | when we say "no diabetes", ~88% truly don't |
+| ROC-AUC | 0.823 | overall separation skill (0.5 = random) |
+
+Confusion matrix: **44 true positives, 10 missed, 26 false alarms, 74 true negatives.**
+
+Read it the way a clinician would: this is a **screening** tool, not a diagnosis. It's deliberately
+tuned to catch as many real cases as possible (high sensitivity), which means it will occasionally flag
+someone who turns out fine (lower specificity). That is exactly the trade-off the **WHO** and **IDF**
+accept for population screening — a positive result is meant to trigger a proper confirmatory test
+(fasting glucose / HbA1c), not replace one.
+
+For perspective, the validated **FINDRISC** questionnaire — the same one our no-lab flow uses — reports
+an AUC of ~0.85 for 10-year type 2 diabetes risk in published studies. Our model's ROC-AUC of **0.82**
+sits in that same screening-instrument range, which is reassuring: the signal the data learns is
+consistent with established medical risk scoring.
+
+> ⚠️ These scores are on the historical PIMA set, which is small and demographic-specific. Real-world
+> accuracy on a different population will vary, so always confirm with a professional.
+
 ---
 
 ## Charts
