@@ -4,6 +4,7 @@ import sys
 import io
 from datetime import datetime
 import random
+import base64
 import numpy as np
 import pandas as pd
 import joblib
@@ -170,7 +171,13 @@ def make_pdf(pred, prob, values, threshold):
     c.save()
     return buf.getvalue()
 
-def show_result(pred, prob, values, threshold):
+def hero_svg_data_uri():
+    try:
+        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "hero.svg")
+        with open(p, "rb") as f:
+            return "data:image/svg+xml;base64," + base64.b64encode(f.read()).decode()
+    except Exception:
+        return ""
     level, color = risk_level(prob, threshold)
     border_cls = {"Low risk": "result-safe", "Moderate risk": "result-warn",
                   "High risk": "result-alert"}.get(level, "result-safe")
@@ -273,6 +280,7 @@ html, body, [class*="css"] { font-family: 'Inter', -apple-system, BlinkMacSystem
 }
 .hero::before { width: 190px; height: 190px; top: -70px; right: -40px; }
 .hero::after { width: 130px; height: 130px; bottom: -55px; left: 28%; }
+.hero-art { margin-left: auto; width: 150px; height: auto; flex: 0 0 auto; position: relative; z-index: 1; }
 @keyframes heroShift {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
@@ -509,15 +517,17 @@ def main():
     if "ai_messages" not in st.session_state:
         st.session_state.ai_messages = []
 
+    hero_art = hero_svg_data_uri()
     st.markdown(
         '<div class="hero">'
         '<div class="hero-badge">🩺</div>'
-        '<div style="position: relative; z-index: 1;">'
+        '<div style="position: relative; z-index: 1; flex: 1;">'
         '<div class="hero-tag">AI-powered clinical screening</div>'
         '<h1>Diabetes Risk Intelligence</h1>'
         '<p>Know your diabetes risk in minutes — upload a report, chat with the assistant, '
         'or answer a few friendly questions. No white coat required. 😊</p>'
         '</div>'
+        f'<img class="hero-art" src="{hero_art}" alt="animated heartbeat" />'
         '</div>',
         unsafe_allow_html=True,
     )
