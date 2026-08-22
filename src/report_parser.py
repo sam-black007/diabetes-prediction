@@ -20,6 +20,15 @@ try:
 except Exception:
     OCR_AVAILABLE = False
 
+try:
+    import pytesseract
+    TESS_AVAILABLE = True
+except Exception:
+    TESS_AVAILABLE = False
+
+OCR_READY = OCR_AVAILABLE or TESS_AVAILABLE
+OCR_ENGINE = "rapidocr" if OCR_AVAILABLE else ("tesseract" if TESS_AVAILABLE else "none")
+
 
 def _to_png(im):
     buf = io.BytesIO()
@@ -68,18 +77,30 @@ def _preprocess_variants(raw_bytes):
 
 def _ocr_image_bytes(image_bytes):
     """OCR an image (PNG/JPG/...) and return the recognized text (multiple passes)."""
-    if not OCR_AVAILABLE:
+    if not OCR_READY:
         return ""
     texts = []
     candidates = [image_bytes]
     candidates.extend(_preprocess_variants(image_bytes))
-    for cand in candidates:
-        try:
-            result, _ = _get_ocr()(cand)
-        except Exception:
-            result = None
-        if result:
-            texts.append("\n".join(line[1] for line in result))
+    if OCR_AVAILABLE:
+        engine = _get_ocr()
+        for cand in candidates:
+            try:
+                result, _ = engine(cand)
+            except Exception:
+                result = None
+            if result:
+                texts.append("\n".join(line[1] for line in result))
+    elif TESS_AVAILABLE:
+        from PIL import Image
+        for cand in candidates:
+            try:
+                im = Image.open(io.BytesIO(cand))
+                txt = pytesseract.image_to_string(im)
+            except Exception:
+                txt = ""
+            if txt and txt.strip():
+                texts.append(txt)
     seen, out = set(), []
     for t in texts:
         for ln in t.splitlines():

@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
-from report_parser import extract_text_from_pdf, extract_text_from_image, parse_report, OCR_AVAILABLE
+from report_parser import extract_text_from_pdf, extract_text_from_image, parse_report, OCR_ENGINE
 from ai_agents import (
     AIClient, chat_agent, enrich_patient_data, web_research_agent,
     extract_patient_fields, extract_lifestyle, INTAKE_FIELDS,
@@ -583,7 +583,7 @@ def main():
                         text = extract_text_from_pdf(report)
                 if pasted.strip():
                     text = (text + "\n" + pasted.strip()).strip() if text else pasted.strip()
-                st.caption(f"OCR engine available: {OCR_AVAILABLE} · extracted {len(text.strip())} characters.")
+                st.caption(f"OCR engine: {OCR_ENGINE} · extracted {len(text.strip())} characters.")
                 parsed = parse_report(text)
                 ai_used = False
                 # OCR fallback: if regex found nothing but we have report text, let the
