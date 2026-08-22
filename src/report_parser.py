@@ -160,6 +160,40 @@ def parse_report(text):
     if postmeal is None:
         postmeal = _first_number(r"(?:2\s*h(?:r|our)?\s*[a-z]*\s*glucose)[^.\n]{0,20}?(\d+(?:\.\d+)?)", text)
 
+    # Label-style reports: "Blood Glucose(F)" / "Glucose(PP)"
+    if fasting is None:
+        fasting = _first_number(r"glucose\s*\(\s*f\s*\)[^.\n]{0,40}?(\d+(?:\.\d+)?)", text)
+    if postmeal is None:
+        postmeal = _first_number(r"glucose\s*\(\s*p{1,2}\s*\)[^.\n]{0,40}?(\d+(?:\.\d+)?)", text)
+
+    # Line-based fallback: classify every glucose/sugar line by its (F)/(PP)
+    # marker. The first number after the label is the observed value (later
+    # numbers on the line are usually the reference range).
+    if fasting is None or postmeal is None:
+        f_vals, pp_vals = [], []
+        for line in text.splitlines():
+            low = line.lower()
+            if not re.search(r"glucose|sugar", low):
+                continue
+            tail = low.split("glucose", 1)[-1] if "glucose" in low else low
+            nums = re.findall(r"(\d+(?:\.\d+)?)", tail)
+            if not nums:
+                continue
+            val = float(nums[0])
+            if not (20 <= val <= 600):
+                continue
+            if re.search(r"\(\s*p{1,2}\s*\)|post|pp\b|2\s*hr|prandial|meal|lunch", low):
+                pp_vals.append(val)
+            else:
+                f_vals.append(val)
+        if fasting is None and f_vals:
+            fasting = f_vals[0]
+        if postmeal is None and pp_vals:
+            postmeal = pp_vals[0]
+        # Two unlabeled glucose lines usually mean F then PP.
+        if postmeal is None and len(f_vals) > 1:
+            postmeal = f_vals[1]
+
     data["fasting"] = fasting
     data["postmeal"] = postmeal
     data["bmi"] = _first_number(r"bmi[:\s]*(\d+(?:\.\d+)?)", text)
@@ -170,7 +204,8 @@ def parse_report(text):
     else:
         data["blood_pressure"] = None
 
-    data["age"] = _first_number(r"\bage[:\s]*(\d{1,3})", text)
+    data["age"] = _first_number(r"\bage\b[^.\n]{0,10}?(\d{1,3})\b", text) or \
+        _first_number(r"(\d{1,3})\s*(?:years?|yrs)\b", text)
     data["insulin"] = _first_number(r"\binsulin[:\s]*(\d+(?:\.\d+)?)", text)
     data["pregnancies"] = _first_number(r"pregnan(?:cy|cies)[:\s]*(\d{1,2})", text)
     data["skin_thickness"] = _first_number(r"skin\s*thickness[:\s]*(\d+(?:\.\d+)?)", text)

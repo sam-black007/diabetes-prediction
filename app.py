@@ -748,7 +748,7 @@ def main():
                                f"coverage {n_real}/{len(REPORT_FIELDS)} fields read from the report.")
                 else:
                     st.caption("AI cross-check unavailable (offline) — parser values only. "
-                               f"Coverage {n_real}/{len(REPORT_FIELDS)}.")
+                               f"Coverage {n_real}/{len(REPORT_FIELDS)}. Reason: {ai.status_detail}")
                 if corrections:
                     with st.expander("Show AI corrections (parser vs AI)"):
                         for c in corrections:
