@@ -16,7 +16,7 @@ except Exception:
 #   AI_MODEL    = model name (optional override)
 #
 # Google Gemini (recommended free tier): get a key at https://aistudio.google.com/apikey
-#   AI_PROVIDER = "google", AI_API_KEY = "AIza...", AI_MODEL = "gemini-2.0-flash"
+#   AI_PROVIDER = "google", AI_API_KEY = "AIza...", AI_MODEL = "gemini-3.6-flash"
 def _get(key, default=None):
     # Prefer real environment variables (loaded from .env locally), then fall
     # back to Streamlit secrets so the deployed app works when the key is only
@@ -44,8 +44,8 @@ BASE_URL = _get("AI_BASE_URL")
 
 PROVIDER_PRESETS = {
     # Google Gemini — generous free tier via AI Studio; OpenAI-compatible endpoint.
-    "google":     ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-2.0-flash"),
-    "gemini":     ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-2.0-flash"),
+    "google":     ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-3.6-flash"),
+    "gemini":     ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-3.6-flash"),
     # DeepSeek — cheap + free trial credits; strong medical/reasoning.
     "deepseek":   ("https://api.deepseek.com", "deepseek-chat"),
     # Qwen (Alibaba Tongyi) — free monthly quota; strong multilingual medical.
@@ -87,9 +87,9 @@ class AIClient:
                 # Google AI Studio key ("AIza..." classic or "AQ." new format) —
                 # use Gemini's OpenAI-compatible endpoint regardless of AI_PROVIDER.
                 base_url = PROVIDER_PRESETS["google"][0]
-                self._model = self._model or "gemini-2.0-flash"
+                self._model = self._model or "gemini-3.6-flash"
                 if not str(self._model).startswith("gemini"):
-                    self._model = "gemini-2.0-flash"
+                    self._model = "gemini-3.6-flash"
                 self.mode = "google"
             elif API_KEY.startswith("sk-ws-"):
                 base_url = maas_base
@@ -257,6 +257,50 @@ def validate_report_values(ocr_text, regex_parsed, client=None):
     if not isinstance(corrections, list):
         corrections = []
     return vals, corrections
+
+
+def assess_diabetes_risk(values, client=None, context=None):
+    """AI-agent diabetes verdict from the patient's screening values.
+
+    Returns {verdict, probability, reasoning, next_steps, missing} where
+    "missing" names the important values that were unknown — the app asks
+    the user for those instead of guessing.
+    """
+    client = client or AIClient()
+    ctx = f"\nContext: {context}" if context else ""
+    prompt = (
+        "You are a diabetes screening assistant. Decide whether this person likely "
+        "has diabetes based ONLY on the values below.\n"
+        f"Patient values (0 or null means unknown): {json.dumps(values)}{ctx}\n\n"
+        'Return ONLY valid JSON with these keys:\n'
+        '  "verdict": "diabetic" or "not diabetic"\n'
+        '  "probability": number 0-1 estimating probability of diabetes\n'
+        '  "reasoning": 2-4 sentences citing the main drivers (glucose/HbA1c first)\n'
+        '  "next_steps": array of 2-4 short actionable steps\n'
+        '  "missing": array of names of IMPORTANT unknown values that would change '
+        'confidence (e.g. "HbA1c", "fasting glucose") — empty if none\n\n'
+        "Reference points (WHO/ADA): fasting >=126 mg/dL, after-meal >=200 mg/dL or "
+        "HbA1c >=6.5% indicate the diabetes range; 100-125 / 140-199 / 5.7-6.4% "
+        "indicate prediabetes. This is screening, not a diagnosis."
+    )
+    system = "You are a careful medical screening assistant. Respond with valid JSON only."
+    raw = client.complete(prompt, system, temperature=0.1)
+    data = _extract_json(raw)
+    if not data:
+        return {}
+    v = str(data.get("verdict", "")).lower()
+    out = {"verdict": "not diabetic" if ("not" in v or v in ("no", "negative")) else "diabetic"}
+    try:
+        p = float(data.get("probability"))
+        out["probability"] = p / 100.0 if p > 1 else max(0.0, min(1.0, p))
+    except Exception:
+        out["probability"] = None
+    out["reasoning"] = data.get("reasoning") or ""
+    steps = data.get("next_steps")
+    out["next_steps"] = [str(s) for s in steps][:5] if isinstance(steps, list) else []
+    missing = data.get("missing")
+    out["missing"] = [str(m) for m in missing][:6] if isinstance(missing, list) else []
+    return out
 
 
 LIFESTYLE_FIELDS = [

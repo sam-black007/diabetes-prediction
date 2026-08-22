@@ -18,11 +18,11 @@ try:
     from ai_agents import (
         AIClient, chat_agent, enrich_patient_data, web_research_agent,
         extract_patient_fields, extract_lifestyle, INTAKE_FIELDS,
-        validate_report_values,
+        validate_report_values, assess_diabetes_risk,
     )
 except ImportError as _ai_err:
     st.error(f"AI module failed to load on the server: {_ai_err}. "
-             "The app runs with AI disabled — report OCR and the model still work.")
+             "The app runs with AI disabled — report OCR still works.")
     class AIClient:  # offline fallback so the rest of the app keeps working
         mode = "offline"
         status_detail = f"import failed: {_ai_err}"
@@ -44,6 +44,8 @@ except ImportError as _ai_err:
                      "Insulin", "BMI", "DiabetesPedigreeFunction", "Age"]
     def validate_report_values(ocr_text, regex_parsed, client=None):
         return {}, []
+    def assess_diabetes_risk(values, client=None, context=None):
+        return {}
 from risk_questionnaire import calc_findrisk, calc_bmi, symptom_flags, RED_FLAG_SYMPTOMS
 
 FUN_FACTS = [
@@ -99,19 +101,6 @@ def load_artifacts():
         with open(THRESHOLD_PATH) as f:
             threshold = json.load(f).get("threshold", 0.5)
     return model, scaler, medians, threshold
-
-def fix_and_predict(values, model, scaler, medians, threshold):
-    row = []
-    for feature in FEATURES:
-        val = values[feature]
-        if val == 0 and medians.get(feature) is not None:
-            val = medians[feature]
-        row.append(val)
-    scaled = scaler.transform(pd.DataFrame([row], columns=FEATURES))
-    prob = model.predict_proba(scaled)[0][1]
-    pred = int(prob >= threshold)
-    return pred, prob
-
 
 def clinical_stage(fasting, postmeal, hba1c):
     """WHO/ADA diagnostic thresholds — what a health worker actually checks.
@@ -188,6 +177,52 @@ def _init_report_fields(parsed, ai_vals, medians):
         st.session_state["rep_dpf"] = 0.5
 
 
+# Values the AI needs for a confident verdict; 0/None means "not provided".
+REQUIRED_FOR_ASSESSMENT = ["Glucose", "Age"]
+
+
+def _missing_required(values):
+    return [k for k in REQUIRED_FOR_ASSESSMENT
+            if not values.get(k) or float(values.get(k) or 0) <= 0]
+
+
+def _assumed_values(values):
+    """Fields we filled with typical averages because the report lacked them."""
+    return [k for k, v in values.items()
+            if k not in REQUIRED_FOR_ASSESSMENT and (not v or float(v or 0) == 0)]
+
+
+def ai_assess(values, ai, context=None):
+    """AI-agent diabetes verdict; asks for missing data instead of guessing.
+
+    Returns (res, missing_names). res is {} when required values are absent.
+    Falls back to WHO/ADA threshold rules if the AI service is offline.
+    """
+    missing = _missing_required(values)
+    if missing:
+        return {}, missing
+    res = {}
+    if ai.mode != "offline":
+        try:
+            res = assess_diabetes_risk(values, ai, context=context) or {}
+        except Exception:
+            res = {}
+    if not res.get("verdict"):
+        stage, _detail = clinical_stage(None, values.get("Glucose") or None,
+                                        values.get("HbA1c") or None)
+        pred = "diabetic" if stage == "Diabetes range" else "not diabetic"
+        prob = {"Diabetes range": 0.85, "Prediabetes range": 0.55}.get(stage, 0.15)
+        res = {"verdict": pred, "probability": prob,
+               "reasoning": f"Offline rule-based check ({stage}). Configure the "
+                            f"Google API key for the full AI assessment.",
+               "next_steps": [], "missing": []}
+    assumed = _assumed_values(values)
+    if assumed and res.get("reasoning"):
+        res["reasoning"] += (" Note: " + ", ".join(assumed) +
+                             " was not provided, so a typical average was assumed.")
+    return res, []
+
+
 def show_result(pred, prob, values, threshold, clinical=None):
     """Render the result: a clinical (WHO/ADA) verdict plus the ML screening estimate."""
     if clinical:
@@ -205,12 +240,12 @@ def show_result(pred, prob, values, threshold, clinical=None):
     )
     st.markdown(f'''
     <div class="result-card">
-      <h3>Screening model estimate</h3>
+      <h3>AI screening result</h3>
       <div class="risk-headline">
         <span class="risk-score">{prob:.0%}</span>
         <span class="risk-cat {cat_class}">{label}</span>
       </div>
-      <p>Trained screening-model probability of diabetes (decision threshold {threshold:.2f}).</p>
+      <p>Estimated probability of diabetes — assessed by the AI agent from your values.</p>
       <div class="bar-track"><div class="bar-fill" style="width:{int(prob * 100)}%"></div></div>
       <div class="chip-row">{chips}</div>
     </div>
@@ -584,7 +619,7 @@ def run_lifestyle_assessment(life, symptoms, model, scaler, medians, threshold):
         family_history=life.get("family_history", "none"),
     )
 
-    # ML model estimate with lab values imputed by dataset medians
+    # AI-agent lifestyle estimate (no lab values in this flow, by design)
     values = {
         "Pregnancies": 0,
         "Glucose": 0,
@@ -595,7 +630,19 @@ def run_lifestyle_assessment(life, symptoms, model, scaler, medians, threshold):
         "DiabetesPedigreeFunction": 0.8 if life.get("family_history") in ("young", "older") else 0.3,
         "Age": float(life.get("age")),
     }
-    pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
+    res = {}
+    if ai.mode != "offline":
+        with st.spinner("AI agent is assessing lifestyle risk..."):
+            try:
+                res = assess_diabetes_risk(
+                    values, ai,
+                    context="No lab tests available — lifestyle-only screening estimate.",
+                ) or {}
+            except Exception:
+                res = {}
+    prob = res.get("probability")
+    if prob is None:
+        prob = {"High risk": 0.70, "Moderate": 0.50, "Slightly elevated": 0.35}.get(fr["category"], 0.20)
 
     cat_class = ("cat-low" if fr["category"] in ("Low risk", "Slightly elevated")
                  else "cat-mod" if fr["category"] == "Moderate" else "cat-high")
@@ -623,10 +670,10 @@ def run_lifestyle_assessment(life, symptoms, model, scaler, medians, threshold):
 
     st.markdown(f'''
     <div class="result-card">
-      <h3>Preliminary model estimate</h3>
-      <p>Screening-model probability (lab values assumed typical): <b>{prob:.0%}</b></p>
+      <h3>AI lifestyle estimate</h3>
+      <p>AI-agent probability of diabetes (lifestyle only, no lab values): <b>{prob:.0%}</b></p>
       <div class="bar-track"><div class="bar-fill" style="width:{int(prob*100)}%"></div></div>
-      <p style="font-size:12.5px;color:#7A8B93;margin-top:8px">Uses the trained model with missing lab values filled by typical averages — indicative only.</p>
+      <p style="font-size:12.5px;color:#7A8B93;margin-top:8px">Indicative only — a blood test (fasting glucose or HbA1c) gives a far more reliable answer.</p>
     </div>
     ''', unsafe_allow_html=True)
 
@@ -673,7 +720,7 @@ def main():
         '<div class="trust-strip">'
         '<div class="trust-pill">🔒 Private — your data stays on your device</div>'
         '<div class="trust-pill">🏥 Based on WHO / IDF guidance</div>'
-        '<div class="trust-pill">✅ Validated model · ROC-AUC 0.82</div>'
+        '<div class="trust-pill">🤖 AI-agent screening (Gemini)</div>'
         '<div class="trust-pill">⚕️ Screening only — not a diagnosis</div>'
         '</div>',
         unsafe_allow_html=True,
@@ -804,21 +851,28 @@ def main():
                         "BMI": bmi_val,
                         "DiabetesPedigreeFunction": dpf,
                         "Age": inputs["Age"],
+                        "HbA1c": hba1c or 0,
+                        "Fasting glucose": fasting or 0,
                     }
-                    pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
-                    show_result(pred, prob, values, threshold, clinical=clinical)
-                    st.caption(f"Decision threshold: {threshold:.2f}.")
-                    if ai.mode != "offline":
-                        with st.spinner("Generating AI interpretation..."):
-                            interp = chat_agent([
-                                {"role": "user", "content":
-                                 f"Explain this diabetes screening result to the patient in plain, "
-                                 f"reassuring language. Prediction: {'diabetic' if pred else 'not diabetic'}. "
-                                 f"Risk probability: {prob:.0%}. Key values: {values}. Say what the main "
-                                 f"drivers are and give 2-3 concrete next steps. Remind them this is not a diagnosis."}
-                            ], ai)
-                        st.markdown("#### AI interpretation")
-                        st.write(interp)
+                    with st.spinner("AI agent is assessing..."):
+                        res, need = ai_assess(values, ai)
+                    if need:
+                        st.error("The AI agent needs these values before it can give a "
+                                 "verdict: " + ", ".join(need) + ". Please enter them "
+                                 "above, or paste the report text below the uploader.")
+                    else:
+                        pred = int(res["verdict"] == "diabetic")
+                        prob = float(res.get("probability") or 0.5)
+                        show_result(pred, prob, values, threshold, clinical=clinical)
+                        st.markdown("#### AI agent verdict — why")
+                        st.write(res.get("reasoning") or "(no reasoning returned)")
+                        if res.get("missing"):
+                            st.info("For a more confident result, also provide: "
+                                    + ", ".join(res["missing"]) + ".")
+                        if res.get("next_steps"):
+                            st.markdown("#### Next steps")
+                            for s_ in res["next_steps"]:
+                                st.write(f"- {s_}")
 
     # ---------------- Tab 2: Guided Intake (agent asks) ----------------
     with tab2:
@@ -851,12 +905,20 @@ def main():
                     cols[i % 4].metric(k, f"{v:g}")
 
             if ai.mode == "offline":
-                st.info("Conversational intake needs the AI provider (Qwen). Enter values manually:")
+                st.info("Conversational intake needs the AI provider. Enter values manually:")
                 vals = {f: st.number_input(f, value=0.0, step=1.0) for f in INTAKE_FIELDS}
                 if st.button("Assess", type="primary"):
-                    pred, prob = fix_and_predict(vals, model, scaler, medians, threshold)
+                    res, need = ai_assess(vals, ai)
                     clinical = clinical_stage(None, vals.get("Glucose") or None, None)
-                    show_result(pred, prob, vals, threshold, clinical=clinical)
+                    if need:
+                        st.error("The AI agent needs: " + ", ".join(need) +
+                                 ". Please enter them above (use 0 only if truly unknown).")
+                    else:
+                        pred = int(res["verdict"] == "diabetic")
+                        prob = float(res.get("probability") or 0.5)
+                        show_result(pred, prob, vals, threshold, clinical=clinical)
+                        st.markdown("#### AI agent verdict — why")
+                        st.write(res.get("reasoning") or "(no reasoning returned)")
             else:
                 for m in st.session_state.intake_history:
                     with st.chat_message(m["role"]):
@@ -886,9 +948,24 @@ def main():
                 if st.button("Run risk assessment", type="primary"):
                     values = {f: st.session_state.intake_collected.get(f, 0) for f in INTAKE_FIELDS}
                     clinical = clinical_stage(None, values.get("Glucose") or None, None)
-                    pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
-                    show_result(pred, prob, values, threshold, clinical=clinical)
-                    st.caption(f"Decision threshold: {threshold:.2f}. Missing values were filled with dataset medians.")
+                    with st.spinner("AI agent is assessing..."):
+                        res, need = ai_assess(values, ai)
+                    if need:
+                        st.error("The assistant still needs: " + ", ".join(need) +
+                                 ". Please answer its questions above first.")
+                    else:
+                        pred = int(res["verdict"] == "diabetic")
+                        prob = float(res.get("probability") or 0.5)
+                        show_result(pred, prob, values, threshold, clinical=clinical)
+                        st.markdown("#### AI agent verdict — why")
+                        st.write(res.get("reasoning") or "(no reasoning returned)")
+                        if res.get("missing"):
+                            st.info("For a more confident result, also provide: "
+                                    + ", ".join(res["missing"]) + ".")
+                        if res.get("next_steps"):
+                            st.markdown("#### Next steps")
+                            for s_ in res["next_steps"]:
+                                st.write(f"- {s_}")
 
         # ===== Lifestyle mode: no lab tests required =====
         else:
