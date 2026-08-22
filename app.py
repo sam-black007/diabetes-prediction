@@ -87,8 +87,38 @@ def fix_and_predict(values, model, scaler, medians, threshold):
     return pred, prob
 
 
-def show_result(pred, prob, values, threshold):
-    """Render the ML screening result as a styled HTML/CSS result card."""
+def clinical_stage(fasting, postmeal, hba1c):
+    """WHO/ADA diagnostic thresholds — what a health worker actually checks.
+
+    Returns (stage_label, explanation). None inputs are ignored.
+    """
+    if (fasting is not None and fasting >= 126) or \
+       (postmeal is not None and postmeal >= 200) or \
+       (hba1c is not None and hba1c >= 6.5):
+        return ("Diabetes range",
+                "Per WHO/ADA: fasting glucose ≥126 mg/dL, 2h/after-meal ≥200 mg/dL, or "
+                "HbA1c ≥6.5% is in the diabetes range — not just 'high BMI'.")
+    if (fasting is not None and fasting >= 100) or \
+       (postmeal is not None and postmeal >= 140) or \
+       (hba1c is not None and hba1c >= 5.7):
+        return ("Prediabetes range",
+                "Above normal but below diabetes thresholds (fasting 100–125, after-meal "
+                "140–199, HbA1c 5.7–6.4%). Lifestyle change now can prevent progression.")
+    return ("Normal / low range",
+            "Blood-sugar values are within the normal range. BMI, age and family history "
+            "still matter as risk factors — keep screening periodically.")
+
+
+def show_result(pred, prob, values, threshold, clinical=None):
+    """Render the result: a clinical (WHO/ADA) verdict plus the ML screening estimate."""
+    if clinical:
+        stage, detail = clinical
+        box = "alert-box" if stage == "Diabetes range" else (
+            "disclaimer" if stage == "Prediabetes range" else "trust-pill")
+        st.markdown(
+            f'<div class="{box}"><b>Clinical check (WHO/ADA):</b> {stage}. {detail}</div>',
+            unsafe_allow_html=True,
+        )
     label = "Diabetes likely" if pred else "No diabetes"
     cat_class = "cat-high" if pred else "cat-low"
     chips = "".join(
@@ -96,12 +126,12 @@ def show_result(pred, prob, values, threshold):
     )
     st.markdown(f'''
     <div class="result-card">
-      <h3>Screening result</h3>
+      <h3>Screening model estimate</h3>
       <div class="risk-headline">
         <span class="risk-score">{prob:.0%}</span>
         <span class="risk-cat {cat_class}">{label}</span>
       </div>
-      <p>Model probability of diabetes (decision threshold {threshold:.2f}).</p>
+      <p>Trained screening-model probability of diabetes (decision threshold {threshold:.2f}).</p>
       <div class="bar-track"><div class="bar-fill" style="width:{int(prob * 100)}%"></div></div>
       <div class="chip-row">{chips}</div>
     </div>
@@ -626,6 +656,7 @@ def main():
                         if "Insulin" in ai_vals: parsed["insulin"] = ai_vals["Insulin"]
                         if "SkinThickness" in ai_vals: parsed["skin_thickness"] = ai_vals["SkinThickness"]
                         if "Pregnancies" in ai_vals: parsed["pregnancies"] = ai_vals["Pregnancies"]
+                        if "HbA1c" in ai_vals: parsed["hba1c"] = ai_vals["HbA1c"]
                         ai_used = True
                 if not any(parsed.values()):
                     st.warning("Could not recognize the values in this report. Make sure the photo is clear, "
@@ -655,6 +686,7 @@ def main():
                         st.session_state["rep_insulin"] = parsed.get("insulin") or medians["Insulin"]
                         st.session_state["rep_preg"] = parsed.get("pregnancies") or 1
                         st.session_state["rep_skin"] = parsed.get("skin_thickness") or medians["SkinThickness"]
+                        st.session_state["rep_hba1c"] = parsed.get("hba1c") or 0.0
                         if "rep_dpf" not in st.session_state:
                             st.session_state["rep_dpf"] = 0.5
 
@@ -662,6 +694,7 @@ def main():
                     fields = [
                         ("After-meal blood sugar (mg/dL)", "rep_postmeal", 1.0),
                         ("Fasting blood sugar (mg/dL)", "rep_fasting", 1.0),
+                        ("HbA1c (%)", "rep_hba1c", 0.1),
                         ("Weight (kg)", "rep_weight", 0.1),
                         ("Height (cm)", "rep_height", 0.1),
                         ("Blood pressure (systolic)", "rep_bp", 1.0),
@@ -682,6 +715,10 @@ def main():
                     if st.button("Assess from report", type="primary"):
                         w = inputs["Weight (kg)"]; h = inputs["Height (cm)"]
                         bmi_val = (float(w) / ((float(h) / 100.0) ** 2)) if (w and h) else medians["BMI"]
+                        fasting = inputs["Fasting blood sugar (mg/dL)"] or None
+                        postmeal = inputs["After-meal blood sugar (mg/dL)"] or None
+                        hba1c = inputs["HbA1c (%)"] or None
+                        clinical = clinical_stage(fasting, postmeal, hba1c)
                         values = {
                             "Pregnancies": inputs["Pregnancies"],
                             "Glucose": inputs["After-meal blood sugar (mg/dL)"],
@@ -693,7 +730,7 @@ def main():
                             "Age": inputs["Age"],
                         }
                         pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
-                        show_result(pred, prob, values, threshold)
+                        show_result(pred, prob, values, threshold, clinical=clinical)
                         st.caption(f"Decision threshold: {threshold:.2f}.")
                         if ai.mode != "offline":
                             with st.spinner("Generating AI interpretation..."):
@@ -742,7 +779,8 @@ def main():
                 vals = {f: st.number_input(f, value=0.0, step=1.0) for f in INTAKE_FIELDS}
                 if st.button("Assess", type="primary"):
                     pred, prob = fix_and_predict(vals, model, scaler, medians, threshold)
-                    show_result(pred, prob, vals, threshold)
+                    clinical = clinical_stage(None, vals.get("Glucose") or None, None)
+                    show_result(pred, prob, vals, threshold, clinical=clinical)
             else:
                 for m in st.session_state.intake_history:
                     with st.chat_message(m["role"]):
@@ -771,8 +809,9 @@ def main():
                     st.rerun()
                 if st.button("Run risk assessment", type="primary"):
                     values = {f: st.session_state.intake_collected.get(f, 0) for f in INTAKE_FIELDS}
+                    clinical = clinical_stage(None, values.get("Glucose") or None, None)
                     pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
-                    show_result(pred, prob, values, threshold)
+                    show_result(pred, prob, values, threshold, clinical=clinical)
                     st.caption(f"Decision threshold: {threshold:.2f}. Missing values were filled with dataset medians.")
 
         # ===== Lifestyle mode: no lab tests required =====
