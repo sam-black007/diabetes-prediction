@@ -19,6 +19,7 @@ try:
         AIClient, chat_agent, enrich_patient_data, web_research_agent,
         extract_patient_fields, extract_lifestyle, INTAKE_FIELDS,
         validate_report_values, assess_diabetes_risk,
+        collect_missing_fields, explain_verdict,
     )
 except ImportError as _ai_err:
     st.error(f"AI module failed to load on the server: {_ai_err}. "
@@ -46,6 +47,10 @@ except ImportError as _ai_err:
         return {}, []
     def assess_diabetes_risk(values, client=None, context=None):
         return {}
+    def collect_missing_fields(answer_text, needed_list, client=None):
+        return {}
+    def explain_verdict(values, outcome, client=None):
+        return ""
 from risk_questionnaire import calc_findrisk, calc_bmi, symptom_flags, RED_FLAG_SYMPTOMS
 
 FUN_FACTS = [
@@ -124,6 +129,40 @@ def clinical_stage(fasting, postmeal, hba1c):
             "still matter as risk factors — keep screening periodically.")
 
 
+def determine_verdict(fasting, postmeal, hba1c):
+    """Rule-based WHO/ADA conclusion. The rules decide; the AI only explains.
+
+    Returns {"state", "detail", "need"} where state is one of
+    "Diabetic" | "Prediabetic" | "Normal" | "Inconclusive".
+    """
+    rules = [
+        ("fasting glucose {v} mg/dL", fasting, 126.0, 100.0),
+        ("after-meal glucose {v} mg/dL", postmeal, 200.0, 140.0),
+        ("HbA1c {v}%", hba1c, 6.5, 5.7),
+    ]
+    known = [(name.format(v=val), val, dia, pre)
+             for name, val, dia, pre in rules if val]
+    if not known:
+        return {"state": "Inconclusive",
+                "detail": "No blood-sugar values (glucose or HbA1c) were found in the report.",
+                "need": ["fasting glucose, after-meal glucose or HbA1c"]}
+    if any(val >= dia for _n, val, dia, _p in known):
+        hit = ", ".join(n for n, v, dia, _p in known if v >= dia)
+        return {"state": "Diabetic",
+                "detail": f"In the diabetes range per WHO/ADA: {hit}.",
+                "need": []}
+    if any(val >= pre for _n, val, _d, pre in known):
+        hit = ", ".join(n for n, v, _d, pre in known if v >= pre)
+        need = [] if (hba1c and hba1c >= 5.7) else ["HbA1c"]
+        return {"state": "Prediabetic",
+                "detail": f"Above normal but below diabetes thresholds: {hit}.",
+                "need": need}
+    names = ", ".join(n for n, _v, _d, _p in known)
+    return {"state": "Normal",
+            "detail": f"All measured markers are within the normal range: {names}.",
+            "need": []}
+
+
 # (UI label, session key, parser key, AI key, step)
 REPORT_FIELDS = [
     ("After-meal blood sugar (mg/dL)", "rep_postmeal", "postmeal", "after_meal_glucose_mg_dl", 1.0),
@@ -151,6 +190,8 @@ def _init_report_fields(parsed, ai_vals, medians):
     for _label, key, pk, ak, _step in REPORT_FIELDS:
         rv, av = parsed.get(pk), ai_vals.get(ak)
         st.session_state["_rep_read_" + key] = (rv, av)
+        known = rv is not None or av is not None
+        st.session_state["_rep_known_" + key] = known
         if _reads_conflict(rv, av):
             if "_rep_pick_" + key not in st.session_state:
                 st.session_state["_rep_pick_" + key] = "AI"
@@ -738,9 +779,7 @@ def main():
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["Medical Report", "Guided Intake", "Model Analytics", "AI Clinical Assistant"]
-    )
+    tab1, tab2, tab3 = st.tabs(["Medical Report", "Guided Intake", "AI Clinical Assistant"])
 
     # ---------------- Tab 1: Medical Report (primary) ----------------
     with tab1:
@@ -773,6 +812,9 @@ def main():
                         "_rep_ai_vals": ai_vals, "_rep_corrections": corrections,
                     })
                     _init_report_fields(parsed, ai_vals, medians)
+                    for k in list(st.session_state.keys()):
+                        if k.startswith("_ans_"):
+                            del st.session_state[k]
                 st.caption(f"OCR engine: {OCR_ENGINE} · extracted {len(text.strip())} characters.")
             else:
                 text = st.session_state.get("_rep_text", "")
@@ -821,58 +863,119 @@ def main():
                             st.session_state["_rep_applied_" + key] = pick
                             st.session_state[key] = float(rv if pick == "Parser" else av)
 
-                st.markdown("#### Values used for assessment (editable)")
-                fields = [(label, key, step) for label, key, _pk, _ak, step in REPORT_FIELDS] + [
-                    ("Weight (kg)", "rep_weight", 0.1),
-                    ("Height (cm)", "rep_height", 0.1),
-                ]
-                c1, c2 = st.columns(2)
-                inputs = {}
-                for i, (label, key, step) in enumerate(fields):
-                    with (c1 if i % 2 == 0 else c2):
-                        inputs[label] = st.number_input(label, key=key,
-                                                        value=float(st.session_state[key]), step=step)
-                dpf = st.number_input("DiabetesPedigreeFunction (family history score)", 0.0, 2.5,
-                                      float(st.session_state["rep_dpf"]), 0.01, key="rep_dpf")
+                # ---- Smart-minimal missing set: what the report didn't say ----
+                def _known(k):
+                    return bool(st.session_state.get("_rep_known_" + k))
 
-                if st.button("Assess from report", type="primary"):
-                    w = inputs["Weight (kg)"]; h = inputs["Height (cm)"]
-                    bmi_val = (float(w) / ((float(h) / 100.0) ** 2)) if (w and h) else medians["BMI"]
-                    fasting = inputs["Fasting blood sugar (mg/dL)"] or None
-                    postmeal = inputs["After-meal blood sugar (mg/dL)"] or None
-                    hba1c = inputs["HbA1c (%)"] or None
-                    clinical = clinical_stage(fasting, postmeal, hba1c)
-                    values = {
-                        "Pregnancies": inputs["Pregnancies"],
-                        "Glucose": inputs["After-meal blood sugar (mg/dL)"],
-                        "BloodPressure": inputs["Blood pressure (systolic)"],
-                        "SkinThickness": inputs["Skin thickness"],
-                        "Insulin": inputs["Insulin"],
-                        "BMI": bmi_val,
-                        "DiabetesPedigreeFunction": dpf,
-                        "Age": inputs["Age"],
-                        "HbA1c": hba1c or 0,
-                        "Fasting glucose": fasting or 0,
-                    }
-                    with st.spinner("AI agent is assessing..."):
-                        res, need = ai_assess(values, ai)
-                    if need:
-                        st.error("The AI agent needs these values before it can give a "
-                                 "verdict: " + ", ".join(need) + ". Please enter them "
-                                 "above, or paste the report text below the uploader.")
-                    else:
-                        pred = int(res["verdict"] == "diabetic")
-                        prob = float(res.get("probability") or 0.5)
-                        show_result(pred, prob, values, threshold, clinical=clinical)
-                        st.markdown("#### AI agent verdict — why")
-                        st.write(res.get("reasoning") or "(no reasoning returned)")
-                        if res.get("missing"):
-                            st.info("For a more confident result, also provide: "
-                                    + ", ".join(res["missing"]) + ".")
-                        if res.get("next_steps"):
-                            st.markdown("#### Next steps")
-                            for s_ in res["next_steps"]:
-                                st.write(f"- {s_}")
+                has_bmi = bool(parsed.get("bmi") or ai_vals.get("bmi"))
+                sex_rep = parsed.get("sex")
+                fasting_v = st.session_state["rep_fasting"] if _known("rep_fasting") else None
+                postmeal_v = st.session_state["rep_postmeal"] if _known("rep_postmeal") else None
+                hba1c_v = st.session_state["rep_hba1c"] if _known("rep_hba1c") else None
+                pre_outcome = determine_verdict(fasting_v, postmeal_v, hba1c_v)
+
+                missing_items = []  # (field_id, question)
+                if not sex_rep and st.session_state.get("_ans_sex") is None:
+                    missing_items.append(("sex", "Are you male or female?"))
+                if not _known("rep_age"):
+                    missing_items.append(("age", "What is your age?"))
+                if not has_bmi:
+                    missing_items.append(("height", "Your height (in cm)?"))
+                    missing_items.append(("weight", "Your weight (in kg)?"))
+                if pre_outcome["state"] == "Prediabetic" and "HbA1c" in pre_outcome["need"]:
+                    missing_items.append(("hba1c", "Your glucose is borderline — do you know your HbA1c (%)? (leave 0 if unknown)"))
+                if pre_outcome["state"] == "Inconclusive":
+                    missing_items.append(("postmeal", "No blood-sugar value was found on the report. What was your latest after-meal glucose (mg/dL)? (0 = don't know)"))
+
+                # Chat Q&A: the agent parses a free-text reply into the same slots
+                if missing_items:
+                    chat_reply = st.chat_input("…or just answer in your own words")
+                    if chat_reply:
+                        with st.spinner("Reading your answer..."):
+                            try:
+                                got = collect_missing_fields(
+                                    chat_reply, [fid for fid, _q in missing_items], ai
+                                ) or {}
+                            except Exception:
+                                got = {}
+                        for k, v in got.items():
+                            st.session_state["_ans_" + k] = v
+
+                # Compact form listing ONLY the items still unanswered
+                still_open = [f for f, _q in missing_items
+                              if st.session_state.get("_ans_" + f) in (None, "", 0)]
+                if still_open:
+                    st.markdown("#### A few things the agent needs from you")
+                    for fid, q in missing_items:
+                        if fid == "sex":
+                            st.radio(q, ["male", "female"], horizontal=True, key="_ans_sex")
+                        elif fid == "age":
+                            st.number_input(q, 1, 120, key="_ans_age")
+                        elif fid == "height":
+                            st.number_input(q, 50.0, 250.0, key="_ans_height")
+                        elif fid == "weight":
+                            st.number_input(q, 10.0, 300.0, key="_ans_weight")
+                        elif fid == "hba1c":
+                            st.number_input(q, 0.0, 20.0, step=0.1, key="_ans_hba1c")
+                        elif fid == "postmeal":
+                            st.number_input(q, 0.0, 600.0, key="_ans_postmeal")
+
+                def _val(fid):
+                    v = st.session_state.get("_ans_" + fid)
+                    if v in (None, "", 0):
+                        return None
+                    return float(v) if isinstance(v, (int, float)) else v
+
+                age_eff = st.session_state["rep_age"] if _known("rep_age") else _val("age")
+                sex_eff = sex_rep or _val("sex")
+                h_eff = st.session_state["rep_height"] if has_bmi else _val("height")
+                w_eff = st.session_state["rep_weight"] if has_bmi else _val("weight")
+                bmi_val = (float(w_eff) / ((float(h_eff) / 100.0) ** 2)) if (w_eff and h_eff) else medians["BMI"]
+                eff_fast = fasting_v
+                eff_pp = postmeal_v or _val("postmeal")
+                eff_a1c = hba1c_v or _val("hba1c")
+
+                outcome = determine_verdict(eff_fast, eff_pp, eff_a1c)
+
+                # ---- Conclude card: thresholds decided, AI explains ----
+                state_styles = {"Diabetic": ("cat-high", "🩸 Diabetes range"),
+                                "Prediabetic": ("cat-mod", "⚠️ Prediabetes range"),
+                                "Normal": ("cat-low", "✅ Normal range")}
+                chips = "".join(f'<span class="chip"><b>{k}:</b> {v}</span>'
+                                for k, v in {
+                                    "Age": age_eff, "Sex": sex_eff,
+                                    "BMI": round(bmi_val, 1),
+                                    "Fasting": eff_fast, "After-meal": eff_pp,
+                                    "HbA1c": eff_a1c}.items() if v not in (None, 0))
+                if outcome["state"] in state_styles:
+                    cat, badge = state_styles[outcome["state"]]
+                    st.markdown(f'''
+                    <div class="result-card">
+                      <h3>Clinical conclusion (WHO/ADA)</h3>
+                      <div class="risk-headline">
+                        <span class="risk-cat {cat}">{badge}</span>
+                      </div>
+                      <p>{outcome["detail"]}</p>
+                      <div class="chip-row">{chips}</div>
+                    </div>
+                    ''', unsafe_allow_html=True)
+                    if ai.mode != "offline":
+                        with st.spinner("AI agent is explaining..."):
+                            try:
+                                expl = explain_verdict(
+                                    {"age": age_eff, "sex": sex_eff, "bmi": bmi_val,
+                                     "fasting_glucose_mg_dl": eff_fast,
+                                     "after_meal_glucose_mg_dl": eff_pp,
+                                     "hba1c_pct": eff_a1c},
+                                    outcome, ai)
+                            except Exception:
+                                expl = ""
+                        if expl:
+                            st.markdown("#### AI agent explanation")
+                            st.write(expl)
+                else:
+                    st.warning("Inconclusive — " + outcome["detail"])
+                    skip = st.button("Assess anyway (low confidence)", type="secondary")
 
     # ---------------- Tab 2: Guided Intake (agent asks) ----------------
     with tab2:
@@ -1042,45 +1145,8 @@ def main():
                 if st.button("Assess lifestyle risk", type="primary"):
                     run_lifestyle_assessment(life, symptoms, model, scaler, medians, threshold)
 
-    # ---------------- Tab 3: Model Analytics ----------------
+    # ---------------- Tab 3: AI Clinical Assistant ----------------
     with tab3:
-        st.markdown(
-            """
-            <div class="result-card">
-              <h3>How accurate is the deployed model?</h3>
-              <div class="risk-headline">
-                <span class="risk-score">0.82</span>
-                <span class="risk-cat cat-mod">ROC-AUC</span>
-              </div>
-              <p style="font-size:13px;color:#2B3A42;margin-top:8px;">
-                On the 154-patient test set (54 actually diabetic), at threshold 0.31:
-                <b>accuracy 76.6%</b>, <b>sensitivity 81.5%</b> (catches ~8 of 10 diabetics),
-                <b>specificity 74.0%</b>, <b>precision 62.9%</b>, <b>NPV 88.1%</b>.
-                This is a screening tool — a positive result should be confirmed with a
-                fasting glucose / HbA1c test, per WHO &amp; IDF guidance.
-              </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        st.subheader("Model comparison")
-        if os.path.exists(os.path.join(PLOT_DIR, "5_model_comparison.png")):
-            st.image(os.path.join(PLOT_DIR, "5_model_comparison.png"))
-        st.subheader("ROC curves")
-        if os.path.exists(os.path.join(PLOT_DIR, "6_roc_curves.png")):
-            st.image(os.path.join(PLOT_DIR, "6_roc_curves.png"))
-        st.subheader("Feature importance (what drives the prediction)")
-        if os.path.exists(os.path.join(PLOT_DIR, "7_feature_importance.png")):
-            st.image(os.path.join(PLOT_DIR, "7_feature_importance.png"))
-        st.subheader("Confusion matrix — Random Forest")
-        if os.path.exists(os.path.join(PLOT_DIR, "cm_random_forest_(tuned).png")):
-            st.image(os.path.join(PLOT_DIR, "cm_random_forest_(tuned).png"))
-        st.subheader("Feature correlation")
-        if os.path.exists(os.path.join(PLOT_DIR, "3_correlation_heatmap.png")):
-            st.image(os.path.join(PLOT_DIR, "3_correlation_heatmap.png"))
-
-    # ---------------- Tab 4: AI Clinical Assistant ----------------
-    with tab4:
         st.subheader("AI Clinical Assistant")
         provider = ai.mode if ai.mode != "offline" else "Offline fallback"
         if ai.mode == "offline":
