@@ -230,7 +230,14 @@ def enrich_patient_data(description, base_values=None, client=None):
 # ---------------------------------------------------------------------------
 # Agent 3: Web research (latest diabetes guidelines / studies)
 # ---------------------------------------------------------------------------
-def fetch_web_snippets(query, max_results=5):
+# Authoritative health organizations we prefer when searching the web.
+HEALTH_AUTHORITIES = [
+    "who.int", "cdc.gov", "niddk.nih.gov", "idf.org",
+    "diabetes.org", "diabetesatlas.org", "mayoclinic.org", "nhs.uk",
+]
+
+
+def _ddg_search(query, max_results=5):
     try:
         r = requests.post(
             "https://html.duckduckgo.com/html/",
@@ -245,10 +252,28 @@ def fetch_web_snippets(query, max_results=5):
                 clean = re.sub(r"<[^>]+>", "", res).strip()
                 if clean:
                     texts.append(clean)
-            return "\n".join(texts)
+            return texts
     except Exception:
         pass
-    return ""
+    return []
+
+
+def fetch_web_snippets(query, max_results=6):
+    # Prefer authoritative health organizations (WHO, CDC, NIDDK, IDF, ADA...).
+    out = []
+    for dom in HEALTH_AUTHORITIES:
+        out += _ddg_search(f"{query} site:{dom}", 2)
+        if len(out) >= max_results:
+            break
+    if len(out) < max_results:
+        out += _ddg_search(query, max_results - len(out))
+    # de-duplicate while keeping order
+    seen, uniq = set(), []
+    for t in out:
+        if t not in seen:
+            seen.add(t)
+            uniq.append(t)
+    return "\n".join(uniq[:max_results])
 
 
 def web_research_agent(query, client=None):
@@ -256,17 +281,19 @@ def web_research_agent(query, client=None):
     snippets = fetch_web_snippets(query)
     if snippets:
         prompt = (
-            "Summarize the latest, practical diabetes risk and prevention guidance "
-            "based on these web search snippets. Be concise (bullet points), note "
-            "that the info comes from a web search, and remind users to verify with "
-            "a healthcare professional.\n\nSnippets:\n" + snippets
+            "Summarize the latest, practical diabetes risk and prevention guidance based "
+            "on these web search snippets. Prefer and explicitly cite guidance from "
+            "authoritative health organizations (WHO, CDC, NIDDK/NIH, IDF, American Diabetes "
+            "Association) when present. Be concise (bullet points), add a one-line note that "
+            "the info comes from a web search, and remind users to verify with a healthcare "
+            "professional.\n\nSnippets:\n" + snippets
         )
     else:
         prompt = (
-            f"Provide current, evidence-based diabetes risk and prevention guidance "
-            f"about: {query}. Note this is based on model knowledge, not a live web "
-            f"search. Be concise (bullet points) and add a disclaimer to consult a "
-            f"healthcare professional."
+            f"Provide current, evidence-based diabetes risk and prevention guidance about: "
+            f"{query}. If relevant, reference widely accepted criteria from WHO, CDC, or the "
+            f"IDF. Note this is based on model knowledge, not a live web search. Be concise "
+            f"(bullet points) and add a disclaimer to consult a healthcare professional."
         )
     system = "You are a medical research assistant summarizing diabetes guidance."
     return client.complete(prompt, system, temperature=0.3)

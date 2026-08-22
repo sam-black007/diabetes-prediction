@@ -212,6 +212,35 @@ chat replies are general guidance, not personalized medical advice.
 
 ---
 
+## Backed by the world's health authorities
+
+Our model is trained on the PIMA dataset, but the **risk factors it learns line up with what the
+leading health bodies say drives type 2 diabetes**. The app also uses the standard diagnostic glucose
+cut-offs and the FINDRISC questionnaire — a validated tool used in WHO/IDF prevention programmes.
+
+Where our approach matches the official guidance:
+- **Glucose thresholds** — we flag diabetes at an after-meal glucose **≥ 200 mg/dL**, matching the
+  WHO/ADA criterion of 2-hour post-load glucose ≥ 11.1 mmol/L (200 mg/dL); fasting ≥ 126 mg/dL is the
+  equivalent fasting standard.
+- **Key risk factors** — glucose, BMI, age, blood pressure, and family history are exactly the factors
+  WHO, CDC, and the IDF call out.
+- **Lifestyle screening** — the no-blood-test flow uses **FINDRISC**, the validated Finnish
+  questionnaire adopted by IDF/WHO prevention programmes.
+
+Authoritative sources we cite and learn from:
+- **World Health Organization (WHO)** — [Diabetes fact sheet](https://www.who.int/news-room/fact-sheets/detail/diabetes) · [Diabetes health topic](https://www.who.int/health-topics/diabetes)
+- **US CDC** — [Diabetes](https://www.cdc.gov/diabetes/)
+- **US NIH / NIDDK** — [Diabetes health information](https://www.niddk.nih.gov/health-information/diabetes)
+- **International Diabetes Federation (IDF)** — [idf.org](https://idf.org/) · [Diabetes Atlas](https://diabetesatlas.org/)
+- **American Diabetes Association** — [diabetes.org](https://diabetes.org/)
+- **Mayo Clinic** — [Diabetes overview](https://www.mayoclinic.org/diseases-conditions/diabetes/symptoms-causes/syc-20371444)
+- **UK NHS** — [Diabetes](https://www.nhs.uk/conditions/diabetes/)
+
+The in-app **AI Clinical Assistant** now searches these organizations first and cites them in its
+answers, so the advice you get is grounded in the latest official guidance rather than guesswork.
+
+---
+
 ## License
 
 Released under the **MIT License** — free for anyone to use, modify, and share.
