@@ -3,6 +3,7 @@ import json
 import sys
 import io
 from datetime import datetime
+import random
 import numpy as np
 import pandas as pd
 import joblib
@@ -17,6 +18,21 @@ from ai_agents import (
     extract_patient_fields, extract_lifestyle, INTAKE_FIELDS,
 )
 from risk_questionnaire import calc_findrisk, calc_bmi, symptom_flags, RED_FLAG_SYMPTOMS
+
+FUN_FACTS = [
+    "🍎 Fibre-rich foods (veggies, beans, whole grains) blunt blood-sugar spikes.",
+    "🚶 A 30-minute walk after meals can lower blood glucose more than you'd think.",
+    "😴 Poor sleep raises diabetes risk — aim for 7–8 hours a night.",
+    "💧 Swapping sugary drinks for water is one of the easiest wins.",
+    "🧬 Family history matters, but daily habits still move the needle a lot.",
+]
+TIP_OF_DAY = [
+    "Small swaps beat big overhauls — start with one habit.",
+    "Water first, sugary drinks second. Your pancreas will thank you.",
+    "A 10-minute walk beats a 0-minute workout. Motion > perfection.",
+    "Sleep is part of health too — don't skip it.",
+    "Know your numbers: glucose, BMI, blood pressure. Awareness is power.",
+]
 
 MODEL_PATH = os.path.join("data", "processed", "best_model.joblib")
 SCALER_PATH = os.path.join("data", "processed", "scaler.joblib")
@@ -155,20 +171,29 @@ def make_pdf(pred, prob, values, threshold):
     return buf.getvalue()
 
 def show_result(pred, prob, values, threshold):
-    if pred == 1:
-        st.error("### Result: Diabetes likely")
-    else:
-        st.success("### Result: No diabetes")
     level, color = risk_level(prob, threshold)
+    fun_caption = {
+        "Low risk": "🎉 You're looking sweet — in the good way! Keep it up.",
+        "Moderate risk": "🙂 Worth a closer look — small lifestyle tweaks go a long way.",
+        "High risk": "⚠️ Heads up — let's get ahead of this with a pro.",
+    }.get(level, "")
+    if pred == 1:
+        st.error(f"### 🚩 Result: Diabetes likely\n\n{fun_caption}")
+    else:
+        st.success(f"### 🎉 Result: No diabetes\n\n{fun_caption}")
+        st.balloons()
     st.markdown(f"**Risk level:** <span style='color:{color};font-weight:bold'>{level}</span>", unsafe_allow_html=True)
     st.progress(int(prob * 100))
     st.write(f"**Probability of diabetes: {prob:.1%}**")
     st.caption("Screening estimate only — validation accuracy ~77% (sensitivity 82%, specificity 74%). "
                "Confirm with a clinician via fasting glucose / HbA1c.")
 
-    st.markdown("#### Health tips")
+    st.markdown("#### 💪 Health tips")
     for tip in health_tips(values):
-        st.write(f"- {tip}")
+        st.write(f"- ✅ {tip}")
+
+    with st.expander("💡 Did you know?"):
+        st.write(random.choice(FUN_FACTS))
 
     record = {
         "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -235,8 +260,9 @@ html, body, [class*="css"] { font-family: 'Inter', -apple-system, BlinkMacSystem
 .hero-badge {
     width: 56px; height: 56px; border-radius: 14px; flex: 0 0 56px;
     background: rgba(255,255,255,0.18); display: flex; align-items: center;
-    justify-content: center; font-size: 30px;
+    justify-content: center; font-size: 30px; animation: bob 3s ease-in-out infinite;
 }
+@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 .hero h1 { font-size: 26px; font-weight: 700; margin: 0; letter-spacing: -0.3px; }
 .hero p { margin: 4px 0 0; font-size: 14px; opacity: 0.9; font-weight: 400; }
 
@@ -452,11 +478,14 @@ def main():
         '<div>'
         '<div class="hero-tag">AI-powered clinical screening</div>'
         '<h1>Diabetes Risk Intelligence</h1>'
-        '<p>Clinical decision-support for early diabetes screening &amp; risk stratification</p>'
+        '<p>Know your diabetes risk in minutes — upload a report, chat with the assistant, '
+        'or answer a few friendly questions. No white coat required. 😊</p>'
         '</div>'
         '</div>',
         unsafe_allow_html=True,
     )
+
+    st.caption("💡 Tip of the day: " + random.choice(TIP_OF_DAY))
 
     st.markdown(
         '<div class="step-strip">'
