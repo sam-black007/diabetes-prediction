@@ -67,10 +67,10 @@ python -m streamlit run app.py
 
 ## How to use the app
 The app has four tabs:
-- **Single patient** — enter a person's fasting and after-meal blood sugar plus other details, click *Predict* to see their diabetes risk with a **Low / Moderate / High** risk level, **health tips**, and a **downloadable PDF report**. Blood sugar is color-coded (normal / pre-diabetes / diabetes range). Past predictions are saved in the *Prediction history*
-- **Batch from CSV** — upload a file like `data/sample_patients.csv` and get predictions for everyone at once
-- **From test report** — upload a **PDF, photo, or scanned image** of a lab report and the app reads it automatically (OCR), fills in the values, and predicts (you can correct anything first). Try `data/sample_report.pdf` or `data/sample_report.png`
-- **Results & charts** — model comparison, ROC curves, feature importance, confusion matrix, and heatmap
+- **Medical Report** — upload a **PDF, photo, or scanned image** of a lab report and the app reads it automatically (OCR), fills in the values, and predicts instantly (you can correct anything first). Try `data/sample_report.pdf` or `data/sample_report.png`
+- **Guided Intake** — a conversational AI agent asks for your health details. If you *have* recent blood-test numbers, it collects them and predicts. If you *don't*, it switches to a **no-lab lifestyle** flow (FINDRISC questionnaire — age, height/weight, waist, activity, diet, BP, family history) and gives a 10-year risk estimate plus red-flag symptom alerts
+- **Model Analytics** — model comparison, ROC curves, feature importance, confusion matrix, and heatmap
+- **AI Clinical Assistant** — chat with a free Chinese LLM (Qwen) for explanations, ask follow-up questions about your report, or run a live web research on diabetes prevention
 
 > A trained model is already included, so the app works right away without training. Anyone else can do the same on their own laptop — no accounts or hosting needed.
 
