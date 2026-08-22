@@ -9,12 +9,14 @@ try:
 except Exception:
     pass
 
-# Chinese, cloud-based (no local install) providers. All are OpenAI-compatible,
-# so we just point the OpenAI client at their base_url. Each offers a free tier
-# (free credits / free monthly quota) — sign up and copy the API key.
-#   AI_PROVIDER = deepseek | qwen | kimi | siliconflow | openai
+# Cloud LLM providers. All are OpenAI-compatible, so we just point the OpenAI
+# client at their base_url.
+#   AI_PROVIDER = google | deepseek | qwen | kimi | siliconflow | openai
 #   AI_API_KEY  = your key from that provider  (OPENAI_API_KEY also accepted)
 #   AI_MODEL    = model name (optional override)
+#
+# Google Gemini (recommended free tier): get a key at https://aistudio.google.com/apikey
+#   AI_PROVIDER = "google", AI_API_KEY = "AIza...", AI_MODEL = "gemini-2.0-flash"
 def _get(key, default=None):
     # Prefer real environment variables (loaded from .env locally), then fall
     # back to Streamlit secrets so the deployed app works when the key is only
@@ -41,6 +43,9 @@ MODEL = _get("AI_MODEL")
 BASE_URL = _get("AI_BASE_URL")
 
 PROVIDER_PRESETS = {
+    # Google Gemini — generous free tier via AI Studio; OpenAI-compatible endpoint.
+    "google":     ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-2.0-flash"),
+    "gemini":     ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-2.0-flash"),
     # DeepSeek — cheap + free trial credits; strong medical/reasoning.
     "deepseek":   ("https://api.deepseek.com", "deepseek-chat"),
     # Qwen (Alibaba Tongyi) — free monthly quota; strong multilingual medical.
@@ -78,7 +83,15 @@ class AIClient:
                                   f"paste the FULL key copied from the CSV file")
         try:
             from openai import OpenAI
-            if API_KEY.startswith("sk-ws-"):
+            if API_KEY.startswith("AIza"):
+                # Google AI Studio key (starts with AIza) — use Gemini's
+                # OpenAI-compatible endpoint regardless of AI_PROVIDER.
+                base_url = PROVIDER_PRESETS["google"][0]
+                self._model = self._model or "gemini-2.0-flash"
+                if not str(self._model).startswith("gemini"):
+                    self._model = "gemini-2.0-flash"
+                self.mode = "google"
+            elif API_KEY.startswith("sk-ws-"):
                 base_url = maas_base
                 self._model = self._model or "qwen-plus"
                 self.mode = "qwen"
