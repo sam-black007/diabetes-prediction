@@ -577,55 +577,74 @@ def main():
                 else:
                     text = extract_text_from_pdf(report)
                 parsed = parse_report(text)
-            if not any(parsed.values()):
-                st.warning("Could not recognize the values in this report. Make sure the photo is clear, "
-                           "well-lit, and the text is readable (scans usually work best).")
-                st.text(text[:500])
-            else:
-                st.success("Report read. Review the extracted values, then assess.")
-                st.markdown("#### Extracted values")
-                defaults = {
-                    "Fasting blood sugar (mg/dL)": parsed.get("fasting", 100) or 100,
-                    "After-meal blood sugar (mg/dL)": parsed.get("postmeal", 140) or 140,
-                    "BMI": parsed.get("bmi", medians["BMI"]) or medians["BMI"],
-                    "Blood pressure (systolic)": parsed.get("blood_pressure", medians["BloodPressure"]) or medians["BloodPressure"],
-                    "Age": parsed.get("age", 45) or 45,
-                    "Insulin": parsed.get("insulin", medians["Insulin"]) or medians["Insulin"],
-                    "Pregnancies": parsed.get("pregnancies", 1) or 1,
-                    "Skin thickness": parsed.get("skin_thickness", medians["SkinThickness"]) or medians["SkinThickness"],
-                }
-                c1, c2 = st.columns(2)
-                inputs = {}
-                for i, (label, val) in enumerate(defaults.items()):
-                    with (c1 if i % 2 == 0 else c2):
-                        inputs[label] = st.number_input(label, value=float(val), step=1.0)
-                dpf = st.number_input("DiabetesPedigreeFunction (family history score)", 0.0, 2.5, 0.5, 0.01)
-
-                if st.button("Assess from report", type="primary"):
-                    values = {
-                        "Pregnancies": inputs["Pregnancies"],
-                        "Glucose": inputs["After-meal blood sugar (mg/dL)"],
-                        "BloodPressure": inputs["Blood pressure (systolic)"],
-                        "SkinThickness": inputs["Skin thickness"],
-                        "Insulin": inputs["Insulin"],
-                        "BMI": inputs["BMI"],
-                        "DiabetesPedigreeFunction": dpf,
-                        "Age": inputs["Age"],
+                ai_used = False
+                # OCR fallback: if regex found nothing but we have report text, let the
+                # assistant read it and pull the screening values (needs AI online).
+                if not any(parsed.values()) and text.strip() and ai.mode != "offline":
+                    ai_vals = extract_patient_fields(
+                        [{"role": "user", "content": "Lab report text:\n" + text}], ai
+                    )
+                    if ai_vals:
+                        if "Glucose" in ai_vals: parsed["postmeal"] = ai_vals["Glucose"]
+                        if "BloodPressure" in ai_vals: parsed["blood_pressure"] = ai_vals["BloodPressure"]
+                        if "BMI" in ai_vals: parsed["bmi"] = ai_vals["BMI"]
+                        if "Age" in ai_vals: parsed["age"] = ai_vals["Age"]
+                        if "Insulin" in ai_vals: parsed["insulin"] = ai_vals["Insulin"]
+                        if "SkinThickness" in ai_vals: parsed["skin_thickness"] = ai_vals["SkinThickness"]
+                        if "Pregnancies" in ai_vals: parsed["pregnancies"] = ai_vals["Pregnancies"]
+                        ai_used = True
+                if not any(parsed.values()):
+                    st.warning("Could not recognize the values in this report. Make sure the photo is clear, "
+                               "well-lit, and the text is readable (scans usually work best).")
+                    with st.expander("Show OCR text"):
+                        st.text(text[:1500])
+                else:
+                    st.success("Report read. Review the extracted values, then assess.")
+                    if ai_used:
+                        st.caption("Read via OCR, with AI-assisted extraction where needed.")
+                    st.markdown("#### Extracted values")
+                    defaults = {
+                        "Fasting blood sugar (mg/dL)": parsed.get("fasting", 100) or 100,
+                        "After-meal blood sugar (mg/dL)": parsed.get("postmeal", 140) or 140,
+                        "BMI": parsed.get("bmi", medians["BMI"]) or medians["BMI"],
+                        "Blood pressure (systolic)": parsed.get("blood_pressure", medians["BloodPressure"]) or medians["BloodPressure"],
+                        "Age": parsed.get("age", 45) or 45,
+                        "Insulin": parsed.get("insulin", medians["Insulin"]) or medians["Insulin"],
+                        "Pregnancies": parsed.get("pregnancies", 1) or 1,
+                        "Skin thickness": parsed.get("skin_thickness", medians["SkinThickness"]) or medians["SkinThickness"],
                     }
-                    pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
-                    show_result(pred, prob, values, threshold)
-                    st.caption(f"Decision threshold: {threshold:.2f}.")
-                    if ai.mode != "offline":
-                        with st.spinner("Generating AI interpretation..."):
-                            interp = chat_agent([
-                                {"role": "user", "content":
-                                 f"Explain this diabetes screening result to the patient in plain, "
-                                 f"reassuring language. Prediction: {'diabetic' if pred else 'not diabetic'}. "
-                                 f"Risk probability: {prob:.0%}. Key values: {values}. Say what the main "
-                                 f"drivers are and give 2-3 concrete next steps. Remind them this is not a diagnosis."}
-                            ], ai)
-                        st.markdown("#### AI interpretation")
-                        st.write(interp)
+                    c1, c2 = st.columns(2)
+                    inputs = {}
+                    for i, (label, val) in enumerate(defaults.items()):
+                        with (c1 if i % 2 == 0 else c2):
+                            inputs[label] = st.number_input(label, value=float(val), step=1.0)
+                    dpf = st.number_input("DiabetesPedigreeFunction (family history score)", 0.0, 2.5, 0.5, 0.01)
+
+                    if st.button("Assess from report", type="primary"):
+                        values = {
+                            "Pregnancies": inputs["Pregnancies"],
+                            "Glucose": inputs["After-meal blood sugar (mg/dL)"],
+                            "BloodPressure": inputs["Blood pressure (systolic)"],
+                            "SkinThickness": inputs["Skin thickness"],
+                            "Insulin": inputs["Insulin"],
+                            "BMI": inputs["BMI"],
+                            "DiabetesPedigreeFunction": dpf,
+                            "Age": inputs["Age"],
+                        }
+                        pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
+                        show_result(pred, prob, values, threshold)
+                        st.caption(f"Decision threshold: {threshold:.2f}.")
+                        if ai.mode != "offline":
+                            with st.spinner("Generating AI interpretation..."):
+                                interp = chat_agent([
+                                    {"role": "user", "content":
+                                     f"Explain this diabetes screening result to the patient in plain, "
+                                     f"reassuring language. Prediction: {'diabetic' if pred else 'not diabetic'}. "
+                                     f"Risk probability: {prob:.0%}. Key values: {values}. Say what the main "
+                                     f"drivers are and give 2-3 concrete next steps. Remind them this is not a diagnosis."}
+                                ], ai)
+                            st.markdown("#### AI interpretation")
+                            st.write(interp)
 
     # ---------------- Tab 2: Guided Intake (agent asks) ----------------
     with tab2:
@@ -822,11 +841,33 @@ def main():
 
         if tool == "Chat":
             st.write("Ask anything about diabetes risk, the screening features, or lifestyle.")
+            report_img = st.file_uploader(
+                "Attach a lab-report photo (optional) — it is read via OCR, never sent as an image",
+                type=["png", "jpg", "jpeg"],
+            )
+            if report_img:
+                with st.spinner("Reading photo with OCR..."):
+                    ocr_text = extract_text_from_image(report_img)
+                if ocr_text.strip():
+                    st.session_state.ai_report_text = ocr_text
+                    with st.expander("OCR text read from your photo"):
+                        st.text(ocr_text[:2000])
+                    st.caption("Photo read. Ask a question and the extracted values will be included.")
+                else:
+                    st.warning("Could not read text from that photo — use a clear, well-lit image or a scan.")
             for m in st.session_state.ai_messages:
                 with st.chat_message(m["role"]):
                     st.write(m["content"])
             if prompt := st.chat_input("Type your question..."):
-                st.session_state.ai_messages.append({"role": "user", "content": prompt})
+                content = prompt
+                if st.session_state.get("ai_report_text"):
+                    content = (
+                        "The user attached a lab report photo. OCR-extracted text:\n"
+                        + st.session_state.ai_report_text
+                        + "\n\nUser question: " + prompt
+                    )
+                    st.session_state.ai_report_text = ""
+                st.session_state.ai_messages.append({"role": "user", "content": content})
                 with st.chat_message("user"):
                     st.write(prompt)
                 with st.chat_message("assistant"):
