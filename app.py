@@ -680,6 +680,25 @@ def main():
 
     # ---------------- Tab 3: Model Analytics ----------------
     with tab3:
+        st.markdown(
+            """
+            <div class="result-card">
+              <h3>How accurate is the deployed model?</h3>
+              <div class="risk-headline">
+                <span class="risk-score">0.82</span>
+                <span class="risk-cat cat-mod">ROC-AUC</span>
+              </div>
+              <p style="font-size:13px;color:#2B3A42;margin-top:8px;">
+                On the 154-patient test set (54 actually diabetic), at threshold 0.31:
+                <b>accuracy 76.6%</b>, <b>sensitivity 81.5%</b> (catches ~8 of 10 diabetics),
+                <b>specificity 74.0%</b>, <b>precision 62.9%</b>, <b>NPV 88.1%</b>.
+                This is a screening tool — a positive result should be confirmed with a
+                fasting glucose / HbA1c test, per WHO &amp; IDF guidance.
+              </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         st.subheader("Model comparison")
         if os.path.exists(os.path.join(PLOT_DIR, "5_model_comparison.png")):
             st.image(os.path.join(PLOT_DIR, "5_model_comparison.png"))
