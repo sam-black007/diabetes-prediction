@@ -27,6 +27,11 @@ def _get(key, default=None):
                 v = st.secrets[key]
         except Exception:
             pass
+    if v is not None:
+        try:
+            v = str(v).strip()
+        except Exception:
+            pass
     return v if v is not None else default
 
 
@@ -58,33 +63,43 @@ class AIClient:
 
     def __init__(self):
         self.mode = "offline"
+        self.status_detail = "not initialized"
         self._client = None
         self._model = MODEL
         # Alibaba MaaS workspace keys (sk-ws-...) ONLY work on the workspace
         # endpoint — not the public dashscope endpoint and not OpenAI's. Detect
         # by key prefix so it works regardless of AI_PROVIDER / AI_BASE_URL.
         maas_base = "https://ws-8jlpbvhjyuol9pn7.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
-        if API_KEY:
-            try:
-                from openai import OpenAI
-                if API_KEY.startswith("sk-ws-"):
-                    base_url = maas_base
-                    self._model = self._model or "qwen-plus"
-                    self.mode = "qwen"
-                elif PROVIDER in PROVIDER_PRESETS:
-                    preset_base, default_model = PROVIDER_PRESETS[PROVIDER]
-                    base_url = BASE_URL or preset_base
-                    self._model = self._model or default_model
-                    self.mode = PROVIDER
-                else:
-                    base_url = BASE_URL
-                    self.mode = PROVIDER
-                if base_url:
-                    self._client = OpenAI(api_key=API_KEY, base_url=base_url)
-                else:
-                    self.mode = "offline"
-            except Exception:
+        if not API_KEY:
+            self.status_detail = "no AI_API_KEY / OPENAI_API_KEY set (add it in Streamlit secrets)"
+            return
+        if API_KEY.startswith("sk-ws-") and len(API_KEY) < 40:
+            self.status_detail = (f"API key looks truncated (length {len(API_KEY)}) — "
+                                  f"paste the FULL key copied from the CSV file")
+        try:
+            from openai import OpenAI
+            if API_KEY.startswith("sk-ws-"):
+                base_url = maas_base
+                self._model = self._model or "qwen-plus"
+                self.mode = "qwen"
+            elif PROVIDER in PROVIDER_PRESETS:
+                preset_base, default_model = PROVIDER_PRESETS[PROVIDER]
+                base_url = BASE_URL or preset_base
+                self._model = self._model or default_model
+                self.mode = PROVIDER
+            else:
+                base_url = BASE_URL
+                self.mode = PROVIDER
+            if base_url:
+                self._client = OpenAI(api_key=API_KEY, base_url=base_url)
+                trunc = f" [key looks truncated, len={len(API_KEY)}]" if len(API_KEY) < 40 else ""
+                self.status_detail = f"connected to {base_url}{trunc}"
+            else:
                 self.mode = "offline"
+                self.status_detail = "no base_url for this provider"
+        except Exception as e:
+            self.mode = "offline"
+            self.status_detail = f"client init failed: {type(e).__name__}: {e}"
 
     def chat(self, messages, system="You are a helpful medical assistant.", temperature=0.3):
         if self._client is not None:

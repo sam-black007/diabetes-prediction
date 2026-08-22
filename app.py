@@ -547,8 +547,7 @@ def main():
         if ai.mode != "offline":
             st.success(f"AI assistant online ({ai.mode})")
         else:
-            st.warning("AI assistant is offline — add AI_API_KEY (Alibaba MaaS key) in Streamlit "
-                       "secrets to enable the conversational assistant.")
+            st.warning("AI assistant is offline — " + ai.status_detail)
         st.write("No forms to fill. Just answer the assistant's questions in your own words — "
                  "it collects what it needs and runs the assessment for you.")
 
@@ -727,8 +726,7 @@ def main():
         st.subheader("AI Clinical Assistant")
         provider = ai.mode if ai.mode != "offline" else "Offline fallback"
         if ai.mode == "offline":
-            st.warning("AI assistant is offline — add AI_API_KEY (Alibaba MaaS key) in Streamlit "
-                       "secrets to enable the assistant.")
+            st.warning("AI assistant is offline — " + ai.status_detail)
         else:
             st.caption(f"AI engine: **{provider}** — conversational analysis, patient-context "
                        "enrichment, and live guideline research.")
