@@ -258,16 +258,31 @@ html, body, [class*="css"] { font-family: 'Inter', -apple-system, BlinkMacSystem
 
 /* Hero header */
 .hero {
+    position: relative; overflow: hidden;
     display: flex; align-items: center; gap: 18px;
-    padding: 22px 26px; border-radius: 16px;
-    background: linear-gradient(120deg, #0E7C86 0%, #0B5C9E 100%);
-    color: #FFFFFF; box-shadow: 0 8px 24px rgba(14,124,134,0.18);
+    padding: 26px 30px; border-radius: 18px;
+    background: linear-gradient(120deg, #0E7C86, #0B5C9E, #11A6A0, #0E7C86);
+    background-size: 300% 300%;
+    animation: heroShift 14s ease infinite;
+    color: #FFFFFF; box-shadow: 0 10px 30px rgba(14,124,134,0.22);
     margin-bottom: 22px;
+}
+.hero::before, .hero::after {
+    content: ""; position: absolute; border-radius: 50%;
+    background: rgba(255,255,255,0.16);
+}
+.hero::before { width: 190px; height: 190px; top: -70px; right: -40px; }
+.hero::after { width: 130px; height: 130px; bottom: -55px; left: 28%; }
+@keyframes heroShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
 }
 .hero-badge {
     width: 56px; height: 56px; border-radius: 14px; flex: 0 0 56px;
     background: rgba(255,255,255,0.18); display: flex; align-items: center;
     justify-content: center; font-size: 30px; animation: bob 3s ease-in-out infinite;
+    position: relative; z-index: 1;
 }
 @keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
 .hero h1 { font-size: 26px; font-weight: 700; margin: 0; letter-spacing: -0.3px; }
@@ -497,7 +512,7 @@ def main():
     st.markdown(
         '<div class="hero">'
         '<div class="hero-badge">🩺</div>'
-        '<div>'
+        '<div style="position: relative; z-index: 1;">'
         '<div class="hero-tag">AI-powered clinical screening</div>'
         '<h1>Diabetes Risk Intelligence</h1>'
         '<p>Know your diabetes risk in minutes — upload a report, chat with the assistant, '
