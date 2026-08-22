@@ -163,6 +163,8 @@ def show_result(pred, prob, values, threshold):
     st.markdown(f"**Risk level:** <span style='color:{color};font-weight:bold'>{level}</span>", unsafe_allow_html=True)
     st.progress(int(prob * 100))
     st.write(f"**Probability of diabetes: {prob:.1%}**")
+    st.caption("Screening estimate only — validation accuracy ~77% (sensitivity 82%, specificity 74%). "
+               "Confirm with a clinician via fasting glucose / HbA1c.")
 
     st.markdown("#### Health tips")
     for tip in health_tips(values):
