@@ -17,6 +17,7 @@ from report_parser import extract_text_from_pdf, extract_text_from_image, parse_
 from ai_agents import (
     AIClient, chat_agent, enrich_patient_data, web_research_agent,
     extract_patient_fields, extract_lifestyle, INTAKE_FIELDS,
+    validate_report_values,
 )
 from risk_questionnaire import calc_findrisk, calc_bmi, symptom_flags, RED_FLAG_SYMPTOMS
 
@@ -107,6 +108,59 @@ def clinical_stage(fasting, postmeal, hba1c):
     return ("Normal / low range",
             "Blood-sugar values are within the normal range. BMI, age and family history "
             "still matter as risk factors — keep screening periodically.")
+
+
+# (UI label, session key, parser key, AI key, step)
+REPORT_FIELDS = [
+    ("After-meal blood sugar (mg/dL)", "rep_postmeal", "postmeal", "after_meal_glucose_mg_dl", 1.0),
+    ("Fasting blood sugar (mg/dL)", "rep_fasting", "fasting", "fasting_glucose_mg_dl", 1.0),
+    ("HbA1c (%)", "rep_hba1c", "hba1c", "hba1c_pct", 0.1),
+    ("Blood pressure (systolic)", "rep_bp", "blood_pressure", "blood_pressure_systolic", 1.0),
+    ("Age", "rep_age", "age", "age", 1.0),
+    ("Insulin", "rep_insulin", "insulin", "insulin", 1.0),
+    ("Pregnancies", "rep_preg", "pregnancies", "pregnancies", 1.0),
+    ("Skin thickness", "rep_skin", "skin_thickness", "skin_thickness", 1.0),
+]
+
+
+def _reads_conflict(rv, av):
+    """True when the regex parser and the AI disagree beyond a small tolerance."""
+    return (rv is not None and av is not None
+            and abs(rv - av) > max(1.0, 0.05 * abs(rv)))
+
+
+def _init_report_fields(parsed, ai_vals, medians):
+    """Seed the report-tab widgets from the two readings (parser + AI)."""
+    median_for = {"rep_bp": "BloodPressure", "rep_insulin": "Insulin", "rep_skin": "SkinThickness"}
+    default_for = {"rep_postmeal": 140.0, "rep_fasting": 100.0, "rep_hba1c": 0.0,
+                   "rep_age": 45.0, "rep_preg": 1.0}
+    for _label, key, pk, ak, _step in REPORT_FIELDS:
+        rv, av = parsed.get(pk), ai_vals.get(ak)
+        st.session_state["_rep_read_" + key] = (rv, av)
+        if _reads_conflict(rv, av):
+            if "_rep_pick_" + key not in st.session_state:
+                st.session_state["_rep_pick_" + key] = "AI"
+            chosen = av if st.session_state["_rep_pick_" + key] == "AI" else rv
+        elif rv is not None:
+            chosen = rv
+        elif av is not None:
+            chosen = av
+        else:
+            chosen = medians[median_for[key]] if key in median_for else default_for.get(key, 0.0)
+        st.session_state[key] = float(chosen)
+    w, h = ai_vals.get("weight_kg"), ai_vals.get("height_cm")
+    b = ai_vals.get("bmi") or parsed.get("bmi")
+    if w and h:
+        st.session_state["rep_weight"], st.session_state["rep_height"] = float(w), float(h)
+    elif b:
+        st.session_state["rep_weight"] = round(float(b) * (1.65 ** 2), 1)
+        st.session_state["rep_height"] = 165.0
+    else:
+        st.session_state["rep_weight"], st.session_state["rep_height"] = 70.0, 170.0
+    if ai_vals.get("diabetes_pedigree_function"):
+        st.session_state["rep_dpf"] = float(ai_vals["diabetes_pedigree_function"])
+    elif "rep_dpf" not in st.session_state:
+        st.session_state["rep_dpf"] = 0.5
 
 
 def show_result(pred, prob, values, threshold, clinical=None):
@@ -630,119 +684,116 @@ def main():
             is_image = bool(report) and report.name.lower().endswith((".png", ".jpg", ".jpeg"))
             if is_image:
                 st.image(report, caption="Uploaded report photo", width=400)
-            with st.spinner("Reading report..."):
-                text = ""
-                if report is not None:
-                    if is_image:
-                        text = extract_text_from_image(report)
-                    else:
-                        text = extract_text_from_pdf(report)
-                if pasted.strip():
-                    text = (text + "\n" + pasted.strip()).strip() if text else pasted.strip()
+            sig = (report.name, getattr(report, "size", None)) if report is not None else ("pasted", hash(pasted.strip()))
+            if st.session_state.get("_rep_sig") != sig:
+                with st.spinner("Reading report (OCR + AI cross-check)..."):
+                    text = ""
+                    if report is not None:
+                        text = extract_text_from_image(report) if is_image else extract_text_from_pdf(report)
+                    if pasted.strip():
+                        text = (text + "\n" + pasted.strip()).strip() if text else pasted.strip()
+                    parsed = parse_report(text)
+                    ai_vals, corrections = {}, []
+                    if text.strip() and ai.mode != "offline":
+                        ai_vals, corrections = validate_report_values(text, parsed, ai)
+                    st.session_state.update({
+                        "_rep_sig": sig, "_rep_text": text, "_rep_parsed": parsed,
+                        "_rep_ai_vals": ai_vals, "_rep_corrections": corrections,
+                    })
+                    _init_report_fields(parsed, ai_vals, medians)
                 st.caption(f"OCR engine: {OCR_ENGINE} · extracted {len(text.strip())} characters.")
-                parsed = parse_report(text)
-                ai_used = False
-                # OCR fallback: if regex found nothing but we have report text, let the
-                # assistant read it and pull the screening values (needs AI online).
-                if not any(parsed.values()) and text.strip() and ai.mode != "offline":
-                    ai_vals = extract_patient_fields(
-                        [{"role": "user", "content": "Lab report text:\n" + text}], ai
-                    )
-                    if ai_vals:
-                        if "Glucose" in ai_vals: parsed["postmeal"] = ai_vals["Glucose"]
-                        if "BloodPressure" in ai_vals: parsed["blood_pressure"] = ai_vals["BloodPressure"]
-                        if "BMI" in ai_vals: parsed["bmi"] = ai_vals["BMI"]
-                        if "Age" in ai_vals: parsed["age"] = ai_vals["Age"]
-                        if "Insulin" in ai_vals: parsed["insulin"] = ai_vals["Insulin"]
-                        if "SkinThickness" in ai_vals: parsed["skin_thickness"] = ai_vals["SkinThickness"]
-                        if "Pregnancies" in ai_vals: parsed["pregnancies"] = ai_vals["Pregnancies"]
-                        if "HbA1c" in ai_vals: parsed["hba1c"] = ai_vals["HbA1c"]
-                        ai_used = True
-                if not any(parsed.values()):
-                    st.warning("Could not recognize the values in this report. Make sure the photo is clear, "
-                               "well-lit, and the text is readable (scans usually work best).")
-                    with st.expander("Show OCR text"):
-                        st.text(text[:1500])
+            else:
+                text = st.session_state.get("_rep_text", "")
+                parsed = st.session_state.get("_rep_parsed", {})
+                ai_vals = st.session_state.get("_rep_ai_vals", {})
+                corrections = st.session_state.get("_rep_corrections", [])
+            if not any(parsed.values()) and not ai_vals:
+                st.warning("Could not recognize the values in this report. Make sure the photo is clear, "
+                           "well-lit, and the text is readable (scans usually work best).")
+                with st.expander("Show OCR text"):
+                    st.text(text[:1500])
+            else:
+                st.success("Report read — OCR and AI cross-checked. Review the values, then assess.")
+                n_real = sum(
+                    1 for _l, _k, pk, ak, _s in REPORT_FIELDS
+                    if parsed.get(pk) is not None or ai_vals.get(ak) is not None
+                )
+                if ai_vals:
+                    st.caption(f"AI cross-check done · {len(corrections)} correction(s) · "
+                               f"coverage {n_real}/{len(REPORT_FIELDS)} fields read from the report.")
                 else:
-                    st.success("Report read. Review the extracted values, then assess.")
-                    if ai_used:
-                        st.caption("Read via OCR, with AI-assisted extraction where needed.")
-                    # Re-populate inputs only when a NEW report is loaded; otherwise
-                    # Streamlit keeps the previous widget values (age would stay 45).
-                    sig = (report.name, getattr(report, "size", None)) if report is not None else ("pasted", hash(pasted.strip()))
-                    if st.session_state.get("_rep_sig") != sig:
-                        st.session_state["_rep_sig"] = sig
-                        bmi0 = parsed.get("bmi")
-                        if bmi0:
-                            st.session_state["rep_weight"] = round(float(bmi0) * (1.65 ** 2), 1)
-                            st.session_state["rep_height"] = 165.0
-                        else:
-                            st.session_state["rep_weight"] = 70.0
-                            st.session_state["rep_height"] = 170.0
-                        st.session_state["rep_fasting"] = parsed.get("fasting") or 100
-                        st.session_state["rep_postmeal"] = parsed.get("postmeal") or 140
-                        st.session_state["rep_bp"] = parsed.get("blood_pressure") or medians["BloodPressure"]
-                        st.session_state["rep_age"] = parsed.get("age") or 45
-                        st.session_state["rep_insulin"] = parsed.get("insulin") or medians["Insulin"]
-                        st.session_state["rep_preg"] = parsed.get("pregnancies") or 1
-                        st.session_state["rep_skin"] = parsed.get("skin_thickness") or medians["SkinThickness"]
-                        st.session_state["rep_hba1c"] = parsed.get("hba1c") or 0.0
-                        if "rep_dpf" not in st.session_state:
-                            st.session_state["rep_dpf"] = 0.5
+                    st.caption("AI cross-check unavailable (offline) — parser values only. "
+                               f"Coverage {n_real}/{len(REPORT_FIELDS)}.")
+                if corrections:
+                    with st.expander("Show AI corrections (parser vs AI)"):
+                        for c in corrections:
+                            st.write(f"- **{c.get('field')}**: parser {c.get('regex_value')} "
+                                     f"→ AI {c.get('ai_value')} — {c.get('reason', '')}")
 
-                    st.markdown("#### Extracted values")
-                    fields = [
-                        ("After-meal blood sugar (mg/dL)", "rep_postmeal", 1.0),
-                        ("Fasting blood sugar (mg/dL)", "rep_fasting", 1.0),
-                        ("HbA1c (%)", "rep_hba1c", 0.1),
-                        ("Weight (kg)", "rep_weight", 0.1),
-                        ("Height (cm)", "rep_height", 0.1),
-                        ("Blood pressure (systolic)", "rep_bp", 1.0),
-                        ("Age", "rep_age", 1.0),
-                        ("Insulin", "rep_insulin", 1.0),
-                        ("Pregnancies", "rep_preg", 1.0),
-                        ("Skin thickness", "rep_skin", 1.0),
-                    ]
-                    c1, c2 = st.columns(2)
-                    inputs = {}
-                    for i, (label, key, step) in enumerate(fields):
-                        with (c1 if i % 2 == 0 else c2):
-                            inputs[label] = st.number_input(label, key=key,
-                                                            value=float(st.session_state[key]), step=step)
-                    dpf = st.number_input("DiabetesPedigreeFunction (family history score)", 0.0, 2.5,
-                                          float(st.session_state["rep_dpf"]), 0.01, key="rep_dpf")
+                conflicts = [
+                    (label, key, rv, av)
+                    for label, key, _pk, _ak, _step in REPORT_FIELDS
+                    for (rv, av) in [st.session_state.get("_rep_read_" + key, (None, None))]
+                    if _reads_conflict(rv, av)
+                ]
+                if conflicts:
+                    st.markdown("#### Parser vs AI — pick the correct reading")
+                    for label, key, rv, av in conflicts:
+                        pick = st.radio(
+                            f"{label} — parser says {rv:g}, AI says {av:g}",
+                            ["Parser", "AI"],
+                            index=0 if st.session_state.get("_rep_pick_" + key) == "Parser" else 1,
+                            key="_rep_pick_" + key, horizontal=True,
+                        )
+                        if st.session_state.get("_rep_applied_" + key) != pick:
+                            st.session_state["_rep_applied_" + key] = pick
+                            st.session_state[key] = float(rv if pick == "Parser" else av)
 
-                    if st.button("Assess from report", type="primary"):
-                        w = inputs["Weight (kg)"]; h = inputs["Height (cm)"]
-                        bmi_val = (float(w) / ((float(h) / 100.0) ** 2)) if (w and h) else medians["BMI"]
-                        fasting = inputs["Fasting blood sugar (mg/dL)"] or None
-                        postmeal = inputs["After-meal blood sugar (mg/dL)"] or None
-                        hba1c = inputs["HbA1c (%)"] or None
-                        clinical = clinical_stage(fasting, postmeal, hba1c)
-                        values = {
-                            "Pregnancies": inputs["Pregnancies"],
-                            "Glucose": inputs["After-meal blood sugar (mg/dL)"],
-                            "BloodPressure": inputs["Blood pressure (systolic)"],
-                            "SkinThickness": inputs["Skin thickness"],
-                            "Insulin": inputs["Insulin"],
-                            "BMI": bmi_val,
-                            "DiabetesPedigreeFunction": dpf,
-                            "Age": inputs["Age"],
-                        }
-                        pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
-                        show_result(pred, prob, values, threshold, clinical=clinical)
-                        st.caption(f"Decision threshold: {threshold:.2f}.")
-                        if ai.mode != "offline":
-                            with st.spinner("Generating AI interpretation..."):
-                                interp = chat_agent([
-                                    {"role": "user", "content":
-                                     f"Explain this diabetes screening result to the patient in plain, "
-                                     f"reassuring language. Prediction: {'diabetic' if pred else 'not diabetic'}. "
-                                     f"Risk probability: {prob:.0%}. Key values: {values}. Say what the main "
-                                     f"drivers are and give 2-3 concrete next steps. Remind them this is not a diagnosis."}
-                                ], ai)
-                            st.markdown("#### AI interpretation")
-                            st.write(interp)
+                st.markdown("#### Values used for assessment (editable)")
+                fields = [(label, key, step) for label, key, _pk, _ak, step in REPORT_FIELDS] + [
+                    ("Weight (kg)", "rep_weight", 0.1),
+                    ("Height (cm)", "rep_height", 0.1),
+                ]
+                c1, c2 = st.columns(2)
+                inputs = {}
+                for i, (label, key, step) in enumerate(fields):
+                    with (c1 if i % 2 == 0 else c2):
+                        inputs[label] = st.number_input(label, key=key,
+                                                        value=float(st.session_state[key]), step=step)
+                dpf = st.number_input("DiabetesPedigreeFunction (family history score)", 0.0, 2.5,
+                                      float(st.session_state["rep_dpf"]), 0.01, key="rep_dpf")
+
+                if st.button("Assess from report", type="primary"):
+                    w = inputs["Weight (kg)"]; h = inputs["Height (cm)"]
+                    bmi_val = (float(w) / ((float(h) / 100.0) ** 2)) if (w and h) else medians["BMI"]
+                    fasting = inputs["Fasting blood sugar (mg/dL)"] or None
+                    postmeal = inputs["After-meal blood sugar (mg/dL)"] or None
+                    hba1c = inputs["HbA1c (%)"] or None
+                    clinical = clinical_stage(fasting, postmeal, hba1c)
+                    values = {
+                        "Pregnancies": inputs["Pregnancies"],
+                        "Glucose": inputs["After-meal blood sugar (mg/dL)"],
+                        "BloodPressure": inputs["Blood pressure (systolic)"],
+                        "SkinThickness": inputs["Skin thickness"],
+                        "Insulin": inputs["Insulin"],
+                        "BMI": bmi_val,
+                        "DiabetesPedigreeFunction": dpf,
+                        "Age": inputs["Age"],
+                    }
+                    pred, prob = fix_and_predict(values, model, scaler, medians, threshold)
+                    show_result(pred, prob, values, threshold, clinical=clinical)
+                    st.caption(f"Decision threshold: {threshold:.2f}.")
+                    if ai.mode != "offline":
+                        with st.spinner("Generating AI interpretation..."):
+                            interp = chat_agent([
+                                {"role": "user", "content":
+                                 f"Explain this diabetes screening result to the patient in plain, "
+                                 f"reassuring language. Prediction: {'diabetic' if pred else 'not diabetic'}. "
+                                 f"Risk probability: {prob:.0%}. Key values: {values}. Say what the main "
+                                 f"drivers are and give 2-3 concrete next steps. Remind them this is not a diagnosis."}
+                            ], ai)
+                        st.markdown("#### AI interpretation")
+                        st.write(interp)
 
     # ---------------- Tab 2: Guided Intake (agent asks) ----------------
     with tab2:
