@@ -199,6 +199,53 @@ def extract_patient_fields(history, client=None):
     return out
 
 
+REPORT_VALUE_KEYS = [
+    "fasting_glucose_mg_dl", "after_meal_glucose_mg_dl", "hba1c_pct",
+    "blood_pressure_systolic", "age", "insulin", "skin_thickness",
+    "pregnancies", "weight_kg", "height_cm", "bmi", "diabetes_pedigree_function",
+]
+
+
+def validate_report_values(ocr_text, regex_parsed, client=None):
+    """Cross-check OCR text against the regex parser using the AI.
+
+    The AI re-reads the raw OCR text (ground truth), normalizes units, and
+    returns (values, corrections): its best-estimate numbers plus a list of
+    every field where its reading differs from the regex parser's, so the
+    user can see and resolve disagreements.
+    """
+    client = client or AIClient()
+    prompt = (
+        "Below is the raw OCR text of a medical lab report and the values a regex "
+        "parser extracted from it. Re-read the OCR text yourself and return ONLY a "
+        'valid JSON object (no prose) with two keys: "values" and "corrections".\n'
+        '"values": an object with numeric-or-null entries for exactly these keys: '
+        + ", ".join(REPORT_VALUE_KEYS) + ". "
+        "Normalize glucose to mg/dL (if the report uses mmol/L multiply by 18) and "
+        "HbA1c to percent. blood_pressure_systolic is the top (systolic) number. "
+        "Use null when a value is truly absent from the report.\n"
+        '"corrections": a list of {"field", "regex_value", "ai_value", "reason"} for '
+        "every field where your reading differs from the parser's (empty list if none).\n\n"
+        f"Parser values: {json.dumps(regex_parsed)}\n\nOCR text:\n{ocr_text}"
+    )
+    system = "You are a careful medical-data extraction assistant. Respond with valid JSON only."
+    raw = client.complete(prompt, system, temperature=0.0)
+    data = _extract_json(raw)
+    if not data:
+        return {}, []
+    vals = {}
+    for k, v in (data.get("values") or {}).items():
+        try:
+            if v is not None:
+                vals[k] = float(v)
+        except Exception:
+            pass
+    corrections = data.get("corrections") or []
+    if not isinstance(corrections, list):
+        corrections = []
+    return vals, corrections
+
+
 LIFESTYLE_FIELDS = [
     "age", "sex", "height_cm", "weight_kg", "waist_cm",
     "activity_high", "veg_daily", "bp_issue", "high_sugar_history", "family_history",

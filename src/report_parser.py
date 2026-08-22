@@ -134,11 +134,25 @@ def _first_number(pattern, text):
     m = re.search(pattern, text, re.IGNORECASE)
     return float(m.group(1)) if m else None
 
+def _normalize_units(text):
+    """Convert glucose values reported in mmol/L to mg/dL (x18).
+
+    Only numbers followed by 'mmol' (not 'mmol/mol', which is the HbA1c IFCC
+    unit) and in a plausible mmol/L glucose range (<40) are converted.
+    """
+    def repl(m):
+        val = float(m.group(1))
+        if val < 40:
+            return f"{val * 18:.0f}"
+        return m.group(0)
+    return re.sub(r"(\d+(?:\.\d+)?)\s*mmol(?!/mol)\b", repl, text, flags=re.IGNORECASE)
+
 def parse_report(text):
     """Best-effort extraction of common lab values from a report's text."""
+    text = _normalize_units(text)
     data = {}
 
-    fasting = _first_number(r"fasting[^.\n]{0,40}?(\d+(?:\.\d+)?)", text)
+    fasting = _first_number(r"(?:fasting|fbs|fbg)[^.\n]{0,40}?(\d+(?:\.\d+)?)", text)
     postmeal = _first_number(
         r"(?:post[-\s]?prandial|post\s*meal|post\s*lunch|pp\s*(?:bs)?|2\s*hr(?:s)?\s*(?:after|post)?)[^.\n]{0,40}?(\d+(?:\.\d+)?)",
         text,
@@ -160,6 +174,8 @@ def parse_report(text):
     data["insulin"] = _first_number(r"\binsulin[:\s]*(\d+(?:\.\d+)?)", text)
     data["pregnancies"] = _first_number(r"pregnan(?:cy|cies)[:\s]*(\d{1,2})", text)
     data["skin_thickness"] = _first_number(r"skin\s*thickness[:\s]*(\d+(?:\.\d+)?)", text)
-    data["hba1c"] = _first_number(r"(?:hba1c|a1c)[:\s]*(\d+(?:\.\d+)?)", text)
+    data["hba1c"] = _first_number(
+        r"(?:hba1c|hb\s*a?1c|a1c|glycated\s*h(?:aem|em)oglobin)[:\s]*(\d+(?:\.\d+)?)", text
+    )
 
     return data
