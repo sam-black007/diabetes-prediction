@@ -737,17 +737,16 @@ def main():
                     research = web_research_agent(query, ai)
                 st.markdown(research)
 
-    st.markdown(
-        '<div class="app-footer">'
-        '<div>Diabetes Risk Intelligence &middot; for screening &amp; education only, not a diagnosis.</div>'
-        '<div>'
-        '<a href="https://github.com/sam-black007/diabetes-prediction" target="_blank">GitHub</a> &nbsp;·&nbsp; '
-        '<a class="footer-btn" href="https://share.streamlit.io/deploy?repo=https://github.com/sam-black007/diabetes-prediction" '
-        'target="_blank">Launch live app</a>'
-        '</div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown("---")
+    st.caption("Diabetes Risk Intelligence · for screening & education only, not a diagnosis.")
+    fcol1, fcol2 = st.columns(2)
+    with fcol1:
+        st.markdown("🔗 [View source on GitHub](https://github.com/sam-black007/diabetes-prediction)")
+    with fcol2:
+        st.link_button(
+            "🚀 Deploy your own copy",
+            "https://share.streamlit.io/deploy?repo=https://github.com/sam-black007/diabetes-prediction",
+        )
 
 if __name__ == "__main__":
     main()
