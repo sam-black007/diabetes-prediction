@@ -303,6 +303,69 @@ def assess_diabetes_risk(values, client=None, context=None):
     return out
 
 
+def collect_missing_fields(answer_text, needed_list, client=None):
+    """Parse a free-text patient answer into the specific values we asked for.
+
+    needed_list contains keys like "age", "sex", "weight_kg", "height_cm",
+    "hba1c". Returns a dict with only the successfully-parsed keys.
+    """
+    client = client or AIClient()
+    prompt = (
+        "The patient was asked for some health details and replied in their own "
+        "words. Extract ONLY these fields from the reply: "
+        + ", ".join(needed_list) + ".\n"
+        'Return ONLY valid JSON using exactly those keys (numbers as numbers; sex '
+        'as "male"/"female"; use null for anything not mentioned).\n\n'
+        f"Patient reply: {answer_text}"
+    )
+    system = "You are a data-extraction assistant. Respond with valid JSON only."
+    raw = client.complete(prompt, system, temperature=0.0)
+    data = _extract_json(raw)
+    if not data:
+        return {}
+    out = {}
+    for k in needed_list:
+        v = data.get(k)
+        if v is None or v == "":
+            continue
+        if k == "sex":
+            s = str(v).lower()
+            if s.startswith("m"):
+                out[k] = "male"
+            elif s.startswith("f"):
+                out[k] = "female"
+        else:
+            try:
+                out[k] = float(v)
+            except Exception:
+                pass
+    return out
+
+
+def explain_verdict(values, outcome, client=None):
+    """Write the patient-friendly explanation for a rule-based WHO/ADA outcome.
+
+    outcome is a dict like {"state": "Diabetic"|"Prediabetic"|"Normal"|
+    "Inconclusive", "detail": str}. The rules already decided — the AI only
+    explains, it never changes the verdict.
+    """
+    client = client or AIClient()
+    prompt = (
+        "A diabetes screening app applied WHO/ADA diagnostic thresholds to a "
+        "patient's report values and reached this conclusion:\n"
+        f"Conclusion: {outcome.get('state', 'Inconclusive')}\n"
+        f"Why (rule-based): {outcome.get('detail', '')}\n"
+        f"Patient values: {json.dumps(values)}\n\n"
+        "Write the explanation shown to the patient: 2-4 warm, plain sentences that "
+        "cite their actual numbers, say what the conclusion means, and give 2-3 "
+        "concrete next steps. If the conclusion is Inconclusive, explain exactly "
+        "which test they should take. End by noting this is screening, not a "
+        "diagnosis. Reply with plain text only."
+    )
+    system = "You are a warm, careful medical screening assistant."
+    return client.complete(prompt, system, temperature=0.3)
+
+
 LIFESTYLE_FIELDS = [
     "age", "sex", "height_cm", "weight_kg", "waist_cm",
     "activity_high", "veg_daily", "bp_issue", "high_sugar_history", "family_history",

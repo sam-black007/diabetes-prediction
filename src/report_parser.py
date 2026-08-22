@@ -206,6 +206,10 @@ def parse_report(text):
 
     data["age"] = _first_number(r"\bage\b[^.\n]{0,10}?(\d{1,3})\b", text) or \
         _first_number(r"(\d{1,3})\s*(?:years?|yrs)\b", text)
+
+    m_sex = re.search(r"(?:\bsex\b|gender)\s*[:\-]?\s*(male|female|\bm\b|\bf\b)",
+                      text, re.IGNORECASE)
+    data["sex"] = m_sex.group(1).lower() if m_sex else None
     data["insulin"] = _first_number(r"\binsulin[:\s]*(\d+(?:\.\d+)?)", text)
     data["pregnancies"] = _first_number(r"pregnan(?:cy|cies)[:\s]*(\d{1,2})", text)
     data["skin_thickness"] = _first_number(r"skin\s*thickness[:\s]*(\d+(?:\.\d+)?)", text)
