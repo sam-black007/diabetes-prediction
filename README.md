@@ -2,7 +2,8 @@
 
 [![Test](https://github.com/sam-black007/diabetes-prediction/actions/workflows/test.yml/badge.svg)](https://github.com/sam-black007/diabetes-prediction/actions)
 
-**🚀 Try it live:** [Launch the web app](https://share.streamlit.io/deploy?repo=https://github.com/sam-black007/diabetes-prediction) (free Streamlit Cloud deploy — 1 click from this repo).
+**🚀 Try it live:** [https://diabetes-prediction-v0.streamlit.app](https://diabetes-prediction-v0.streamlit.app) — open, no sign-up needed.
+Want to host your own? [Deploy from this repo](https://share.streamlit.io/deploy?repo=https://github.com/sam-black007/diabetes-prediction) (free Streamlit Cloud, 1 click).
 
 A simple machine learning project that predicts whether a person has diabetes based on their medical records. I used the classic **PIMA Indian Diabetes Dataset**, which has records for 768 patients with 8 health features.
 
@@ -185,3 +186,9 @@ tests/
 requirements.txt
 README.md
 ```
+
+## License
+
+Released under the **MIT License** — free for anyone to use, modify, and distribute.
+See [LICENSE](LICENSE) for details. The app is provided for screening & education only
+and is **not a substitute for professional medical diagnosis**.
