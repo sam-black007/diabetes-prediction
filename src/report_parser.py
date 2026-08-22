@@ -160,5 +160,6 @@ def parse_report(text):
     data["insulin"] = _first_number(r"\binsulin[:\s]*(\d+(?:\.\d+)?)", text)
     data["pregnancies"] = _first_number(r"pregnan(?:cy|cies)[:\s]*(\d{1,2})", text)
     data["skin_thickness"] = _first_number(r"skin\s*thickness[:\s]*(\d+(?:\.\d+)?)", text)
+    data["hba1c"] = _first_number(r"(?:hba1c|a1c)[:\s]*(\d+(?:\.\d+)?)", text)
 
     return data
