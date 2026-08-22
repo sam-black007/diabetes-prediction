@@ -3,6 +3,12 @@ import io
 from pypdf import PdfReader
 
 try:
+    from PIL import Image, ImageOps, ImageEnhance, ImageFilter
+    PIL_OK = True
+except Exception:
+    PIL_OK = False
+
+try:
     from rapidocr_onnxruntime import RapidOCR
     _ocr = None
     def _get_ocr():
@@ -14,14 +20,71 @@ try:
 except Exception:
     OCR_AVAILABLE = False
 
+
+def _to_png(im):
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _preprocess_variants(raw_bytes):
+    """Return several enhanced PNG byte blobs to maximize OCR pickup from photos.
+
+    Phone photos are usually low-contrast, skewed or shadowed, so we feed RapidOCR
+    a few enhanced versions (colour contrast, grayscale denoised, binary threshold)
+    and merge the results.
+    """
+    variants = []
+    if not PIL_OK:
+        return variants
+    try:
+        img = Image.open(io.BytesIO(raw_bytes)).convert("RGB")
+    except Exception:
+        return variants
+    w, h = img.size
+    scale = max(1.0, 1500.0 / max(w, h))
+    if scale > 1:
+        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+    # 1) colour: autocontrast + contrast + sharpen
+    v1 = img.copy()
+    v1 = ImageOps.autocontrast(v1)
+    v1 = ImageEnhance.Contrast(v1).enhance(1.7)
+    v1 = ImageEnhance.Sharpness(v1).enhance(1.6)
+    variants.append(_to_png(v1))
+    # 2) grayscale + denoise + contrast
+    g = img.convert("L")
+    g = ImageOps.autocontrast(g)
+    g = g.filter(ImageFilter.MedianFilter(3))
+    g = ImageEnhance.Contrast(g).enhance(2.0)
+    variants.append(_to_png(g))
+    # 3) binary threshold for crisp text
+    bw = g.point(lambda p: 255 if p > 150 else 0)
+    variants.append(_to_png(bw))
+    return variants
+
+
 def _ocr_image_bytes(image_bytes):
-    """OCR an image (PNG/JPG/...) and return the recognized text."""
+    """OCR an image (PNG/JPG/...) and return the recognized text (multiple passes)."""
     if not OCR_AVAILABLE:
         return ""
-    result, _ = _get_ocr()(image_bytes)
-    if not result:
-        return ""
-    return "\n".join(line[1] for line in result)
+    texts = []
+    candidates = [image_bytes]
+    candidates.extend(_preprocess_variants(image_bytes))
+    for cand in candidates:
+        try:
+            result, _ = _get_ocr()(cand)
+        except Exception:
+            result = None
+        if result:
+            texts.append("\n".join(line[1] for line in result))
+    seen, out = set(), []
+    for t in texts:
+        for ln in t.splitlines():
+            ln = ln.strip()
+            if ln and ln not in seen:
+                seen.add(ln)
+                out.append(ln)
+    return "\n".join(out)
 
 def extract_text_from_pdf(uploaded_file):
     content = uploaded_file.read()
