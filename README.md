@@ -2,7 +2,15 @@
 
 [![Test](https://github.com/sam-black007/diabetes-prediction/actions/workflows/test.yml/badge.svg)](https://github.com/sam-black007/diabetes-prediction/actions)
 
+**🚀 Try it live:** [Launch the web app](https://share.streamlit.io/deploy?repo=https://github.com/sam-black007/diabetes-prediction) (free Streamlit Cloud deploy — 1 click from this repo).
+
 A simple machine learning project that predicts whether a person has diabetes based on their medical records. I used the classic **PIMA Indian Diabetes Dataset**, which has records for 768 patients with 8 health features.
+
+## What's new — AI-powered & no-lab screening
+- **AI Clinical Assistant tab** (Qwen / Chinese LLM via OpenAI-compatible API): chat, patient-context enrichment, and live web research.
+- **Guided Intake** — a conversational agent collects the 8 clinical features *or*, for people without test data, simple **lifestyle** questions (no blood test needed).
+- **FINDRISC lifestyle risk score** — validated questionnaire (age, BMI from height/weight, waist, activity, diet, BP, family history) with a 10-year risk estimate, plus a preliminary model estimate and red-flag symptom alerts.
+- **Medical Report import** — upload a PDF/photo of a lab report; values are read by OCR, assessed instantly, and explained by the AI.
 
 ## What I used
 Python, Pandas, NumPy, Scikit-Learn, Matplotlib, Seaborn and Streamlit. I trained and compared three models — **Logistic Regression, SVM, and Random Forest** — and picked the best one.

@@ -1,1 +1,28 @@
-[]
+[
+  {
+    "date": "2026-08-22 09:06",
+    "result": "Diabetes likely",
+    "risk": "84.0%",
+    "Glucose": 140.0,
+    "Pregnancies": 8.0,
+    "BloodPressure": 61.0,
+    "SkinThickness": 49.0,
+    "Insulin": 423.0,
+    "BMI": 33.55,
+    "DiabetesPedigreeFunction": 1.25,
+    "Age": 55.0
+  },
+  {
+    "date": "2026-08-22 09:30",
+    "result": "Diabetes likely",
+    "risk": "86.9%",
+    "Pregnancies": 0.0,
+    "Glucose": 160.0,
+    "BloodPressure": 0.0,
+    "SkinThickness": 0.0,
+    "Insulin": 0.0,
+    "BMI": 0.0,
+    "DiabetesPedigreeFunction": 0.0,
+    "Age": 0.0
+  }
+]
