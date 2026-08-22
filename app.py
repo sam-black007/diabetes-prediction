@@ -86,6 +86,32 @@ def fix_and_predict(values, model, scaler, medians, threshold):
     pred = int(prob >= threshold)
     return pred, prob
 
+
+def show_result(pred, prob, values, threshold):
+    """Render the ML screening result as a styled HTML/CSS result card."""
+    label = "Diabetes likely" if pred else "No diabetes"
+    cat_class = "cat-high" if pred else "cat-low"
+    chips = "".join(
+        f'<span class="chip"><b>{k}:</b> {v}</span>' for k, v in values.items()
+    )
+    st.markdown(f'''
+    <div class="result-card">
+      <h3>Screening result</h3>
+      <div class="risk-headline">
+        <span class="risk-score">{prob:.0%}</span>
+        <span class="risk-cat {cat_class}">{label}</span>
+      </div>
+      <p>Model probability of diabetes (decision threshold {threshold:.2f}).</p>
+      <div class="bar-track"><div class="bar-fill" style="width:{int(prob * 100)}%"></div></div>
+      <div class="chip-row">{chips}</div>
+    </div>
+    ''', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="disclaimer">Screening only — not a diagnosis. A positive result should be '
+        'confirmed with a fasting glucose / HbA1c test per WHO &amp; IDF guidance.</div>',
+        unsafe_allow_html=True,
+    )
+
 def risk_level(prob, threshold):
     if prob < threshold:
         return "Low risk", "#2E7D32"
