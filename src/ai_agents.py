@@ -83,9 +83,9 @@ class AIClient:
                                   f"paste the FULL key copied from the CSV file")
         try:
             from openai import OpenAI
-            if API_KEY.startswith("AIza"):
-                # Google AI Studio key (starts with AIza) — use Gemini's
-                # OpenAI-compatible endpoint regardless of AI_PROVIDER.
+            if API_KEY.startswith(("AIza", "AQ.")):
+                # Google AI Studio key ("AIza..." classic or "AQ." new format) —
+                # use Gemini's OpenAI-compatible endpoint regardless of AI_PROVIDER.
                 base_url = PROVIDER_PRESETS["google"][0]
                 self._model = self._model or "gemini-2.0-flash"
                 if not str(self._model).startswith("gemini"):
