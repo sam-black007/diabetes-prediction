@@ -636,32 +636,59 @@ def main():
                     st.success("Report read. Review the extracted values, then assess.")
                     if ai_used:
                         st.caption("Read via OCR, with AI-assisted extraction where needed.")
+                    # Re-populate inputs only when a NEW report is loaded; otherwise
+                    # Streamlit keeps the previous widget values (age would stay 45).
+                    sig = (report.name, getattr(report, "size", None)) if report is not None else ("pasted", hash(pasted.strip()))
+                    if st.session_state.get("_rep_sig") != sig:
+                        st.session_state["_rep_sig"] = sig
+                        bmi0 = parsed.get("bmi")
+                        if bmi0:
+                            st.session_state["rep_weight"] = round(float(bmi0) * (1.65 ** 2), 1)
+                            st.session_state["rep_height"] = 165.0
+                        else:
+                            st.session_state["rep_weight"] = 70.0
+                            st.session_state["rep_height"] = 170.0
+                        st.session_state["rep_fasting"] = parsed.get("fasting") or 100
+                        st.session_state["rep_postmeal"] = parsed.get("postmeal") or 140
+                        st.session_state["rep_bp"] = parsed.get("blood_pressure") or medians["BloodPressure"]
+                        st.session_state["rep_age"] = parsed.get("age") or 45
+                        st.session_state["rep_insulin"] = parsed.get("insulin") or medians["Insulin"]
+                        st.session_state["rep_preg"] = parsed.get("pregnancies") or 1
+                        st.session_state["rep_skin"] = parsed.get("skin_thickness") or medians["SkinThickness"]
+                        if "rep_dpf" not in st.session_state:
+                            st.session_state["rep_dpf"] = 0.5
+
                     st.markdown("#### Extracted values")
-                    defaults = {
-                        "Fasting blood sugar (mg/dL)": parsed.get("fasting", 100) or 100,
-                        "After-meal blood sugar (mg/dL)": parsed.get("postmeal", 140) or 140,
-                        "BMI": parsed.get("bmi", medians["BMI"]) or medians["BMI"],
-                        "Blood pressure (systolic)": parsed.get("blood_pressure", medians["BloodPressure"]) or medians["BloodPressure"],
-                        "Age": parsed.get("age", 45) or 45,
-                        "Insulin": parsed.get("insulin", medians["Insulin"]) or medians["Insulin"],
-                        "Pregnancies": parsed.get("pregnancies", 1) or 1,
-                        "Skin thickness": parsed.get("skin_thickness", medians["SkinThickness"]) or medians["SkinThickness"],
-                    }
+                    fields = [
+                        ("After-meal blood sugar (mg/dL)", "rep_postmeal", 1.0),
+                        ("Fasting blood sugar (mg/dL)", "rep_fasting", 1.0),
+                        ("Weight (kg)", "rep_weight", 0.1),
+                        ("Height (cm)", "rep_height", 0.1),
+                        ("Blood pressure (systolic)", "rep_bp", 1.0),
+                        ("Age", "rep_age", 1.0),
+                        ("Insulin", "rep_insulin", 1.0),
+                        ("Pregnancies", "rep_preg", 1.0),
+                        ("Skin thickness", "rep_skin", 1.0),
+                    ]
                     c1, c2 = st.columns(2)
                     inputs = {}
-                    for i, (label, val) in enumerate(defaults.items()):
+                    for i, (label, key, step) in enumerate(fields):
                         with (c1 if i % 2 == 0 else c2):
-                            inputs[label] = st.number_input(label, value=float(val), step=1.0)
-                    dpf = st.number_input("DiabetesPedigreeFunction (family history score)", 0.0, 2.5, 0.5, 0.01)
+                            inputs[label] = st.number_input(label, key=key,
+                                                            value=float(st.session_state[key]), step=step)
+                    dpf = st.number_input("DiabetesPedigreeFunction (family history score)", 0.0, 2.5,
+                                          float(st.session_state["rep_dpf"]), 0.01, key="rep_dpf")
 
                     if st.button("Assess from report", type="primary"):
+                        w = inputs["Weight (kg)"]; h = inputs["Height (cm)"]
+                        bmi_val = (float(w) / ((float(h) / 100.0) ** 2)) if (w and h) else medians["BMI"]
                         values = {
                             "Pregnancies": inputs["Pregnancies"],
                             "Glucose": inputs["After-meal blood sugar (mg/dL)"],
                             "BloodPressure": inputs["Blood pressure (systolic)"],
                             "SkinThickness": inputs["Skin thickness"],
                             "Insulin": inputs["Insulin"],
-                            "BMI": inputs["BMI"],
+                            "BMI": bmi_val,
                             "DiabetesPedigreeFunction": dpf,
                             "Age": inputs["Age"],
                         }
