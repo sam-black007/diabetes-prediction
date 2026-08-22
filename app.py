@@ -14,43 +14,95 @@ from reportlab.pdfgen import canvas
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 from report_parser import extract_text_from_pdf, extract_text_from_image, parse_report, OCR_ENGINE
+
+# Resilient AI-module binding: during a Streamlit Cloud rebuild the app can
+# momentarily load against a stale module version. Bind each function
+# individually so only genuinely-missing features degrade — never the app.
+import importlib as _importlib
+_ai_mod = None
+_ai_missing = []
 try:
-    from ai_agents import (
-        AIClient, chat_agent, enrich_patient_data, web_research_agent,
-        extract_patient_fields, extract_lifestyle, INTAKE_FIELDS,
-        validate_report_values, assess_diabetes_risk,
-        collect_missing_fields, explain_verdict,
-    )
-except ImportError as _ai_err:
-    st.error(f"AI module failed to load on the server: {_ai_err}. "
-             "The app runs with AI disabled — report OCR still works.")
-    class AIClient:  # offline fallback so the rest of the app keeps working
-        mode = "offline"
-        status_detail = f"import failed: {_ai_err}"
-        def chat(self, messages, system="", temperature=0.3):
-            return "The AI assistant is unavailable on this server."
-        def complete(self, prompt, system="", temperature=0.3):
-            return "The AI assistant is unavailable on this server."
-    def chat_agent(messages, client=None, system=None):
-        return "The AI assistant is unavailable on this server."
-    def enrich_patient_data(description, base_values=None, client=None):
-        return {}
-    def web_research_agent(query, client=None):
-        return "Web research needs the AI module, which failed to load."
-    def extract_patient_fields(history, client=None):
-        return {}
-    def extract_lifestyle(history, client=None):
-        return {}
-    INTAKE_FIELDS = ["Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
-                     "Insulin", "BMI", "DiabetesPedigreeFunction", "Age"]
-    def validate_report_values(ocr_text, regex_parsed, client=None):
-        return {}, []
-    def assess_diabetes_risk(values, client=None, context=None):
-        return {}
-    def collect_missing_fields(answer_text, needed_list, client=None):
-        return {}
-    def explain_verdict(values, outcome, client=None):
-        return ""
+    import ai_agents as _ai_mod
+    _ai_mod = _importlib.reload(_ai_mod)
+except Exception as _e:
+    _ai_missing.append(f"module load: {type(_e).__name__}: {_e}")
+
+
+class _OfflineAIClient:
+    mode = "offline"
+    status_detail = "AI module unavailable on this server"
+
+    def chat(self, messages, system="", temperature=0.3):
+        return "The AI assistant is temporarily unavailable on this server."
+
+    def complete(self, prompt, system="", temperature=0.3):
+        return "The AI assistant is temporarily unavailable on this server."
+
+
+def _fb_chat_agent(messages, client=None, system=None):
+    return "The AI assistant is temporarily unavailable on this server."
+
+
+def _fb_enrich(description, base_values=None, client=None):
+    return {}
+
+
+def _fb_web(query, client=None):
+    return "Web research is temporarily unavailable."
+
+
+def _fb_extract_fields(history, client=None):
+    return {}
+
+
+def _fb_extract_lifestyle(history, client=None):
+    return {}
+
+
+def _fb_validate(ocr_text, regex_parsed, client=None):
+    return {}, []
+
+
+def _fb_assess(values, client=None, context=None):
+    return {}
+
+
+def _fb_collect(answer_text, needed_list, client=None):
+    return {}
+
+
+def _fb_explain(values, outcome, client=None):
+    return ""
+
+
+INTAKE_FIELDS = ["Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
+                 "Insulin", "BMI", "DiabetesPedigreeFunction", "Age"]
+
+
+def _bind(name, fallback):
+    if _ai_mod is not None and hasattr(_ai_mod, name):
+        return getattr(_ai_mod, name)
+    _ai_missing.append(name)
+    return fallback
+
+
+AIClient = _bind("AIClient", _OfflineAIClient)
+chat_agent = _bind("chat_agent", _fb_chat_agent)
+enrich_patient_data = _bind("enrich_patient_data", _fb_enrich)
+web_research_agent = _bind("web_research_agent", _fb_web)
+extract_patient_fields = _bind("extract_patient_fields", _fb_extract_fields)
+extract_lifestyle = _bind("extract_lifestyle", _fb_extract_lifestyle)
+validate_report_values = _bind("validate_report_values", _fb_validate)
+assess_diabetes_risk = _bind("assess_diabetes_risk", _fb_assess)
+collect_missing_fields = _bind("collect_missing_fields", _fb_collect)
+explain_verdict = _bind("explain_verdict", _fb_explain)
+if _ai_mod is not None:
+    INTAKE_FIELDS = getattr(_ai_mod, "INTAKE_FIELDS", INTAKE_FIELDS)
+
+if _ai_missing:
+    st.warning("Some AI features are still updating on the server (missing: "
+               + ", ".join(sorted(set(_ai_missing))) + "). Everything else keeps "
+               "working — reboot from Manage app if this message persists.")
 from risk_questionnaire import calc_findrisk, calc_bmi, symptom_flags, RED_FLAG_SYMPTOMS
 
 FUN_FACTS = [
