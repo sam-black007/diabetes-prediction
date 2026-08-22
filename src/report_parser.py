@@ -60,6 +60,9 @@ def _preprocess_variants(raw_bytes):
     # 3) binary threshold for crisp text
     bw = g.point(lambda p: 255 if p > 150 else 0)
     variants.append(_to_png(bw))
+    # 4) inverted threshold (for white-on-dark or low-contrast text)
+    inv = g.point(lambda p: 255 if p < 105 else 0)
+    variants.append(_to_png(inv))
     return variants
 
 

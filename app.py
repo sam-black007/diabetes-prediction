@@ -13,7 +13,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
-from report_parser import extract_text_from_pdf, extract_text_from_image, parse_report
+from report_parser import extract_text_from_pdf, extract_text_from_image, parse_report, OCR_AVAILABLE
 from ai_agents import (
     AIClient, chat_agent, enrich_patient_data, web_research_agent,
     extract_patient_fields, extract_lifestyle, INTAKE_FIELDS,
@@ -565,17 +565,25 @@ def main():
         st.subheader("Import lab report (PDF / image)")
         st.write("Upload a blood test report — **PDF, photo, or scanned image** (PNG/JPG). "
                  "Values are read automatically (OCR) and a risk assessment is generated instantly, "
-                 "with an AI interpretation of the result.")
+                 "with an AI interpretation of the result. Your image is processed with OCR on our "
+                 "server and is **never sent to the AI model** (it has no vision).")
         report = st.file_uploader("Choose a report (PDF or image)", type=["pdf", "png", "jpg", "jpeg"])
-        if report is not None:
-            is_image = report.name.lower().endswith((".png", ".jpg", ".jpeg"))
+        pasted = st.text_area("…or paste the report text / values here if the photo won't read",
+                              key="report_paste")
+        if report is not None or pasted.strip():
+            is_image = bool(report) and report.name.lower().endswith((".png", ".jpg", ".jpeg"))
             if is_image:
                 st.image(report, caption="Uploaded report photo", width=400)
             with st.spinner("Reading report..."):
-                if is_image:
-                    text = extract_text_from_image(report)
-                else:
-                    text = extract_text_from_pdf(report)
+                text = ""
+                if report is not None:
+                    if is_image:
+                        text = extract_text_from_image(report)
+                    else:
+                        text = extract_text_from_pdf(report)
+                if pasted.strip():
+                    text = (text + "\n" + pasted.strip()).strip() if text else pasted.strip()
+                st.caption(f"OCR engine available: {OCR_AVAILABLE} · extracted {len(text.strip())} characters.")
                 parsed = parse_report(text)
                 ai_used = False
                 # OCR fallback: if regex found nothing but we have report text, let the
