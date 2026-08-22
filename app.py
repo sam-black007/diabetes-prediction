@@ -335,6 +335,27 @@ body { background: linear-gradient(180deg, #FFFFFF 0%, #F3F8FA 100%); }
     padding: 8px 16px; border-radius: 9px; font-weight: 600;
 }
 .footer-btn:hover { filter: brightness(1.06); text-decoration: none !important; }
+
+/* Polished chat UI */
+[data-testid="stChatMessage"] { background: transparent !important; padding: 6px 0 !important; }
+[data-testid="stChatMessageContent"] {
+    border-radius: 16px !important; padding: 12px 16px !important;
+    font-size: 14px !important; line-height: 1.5 !important; box-shadow: 0 1px 6px rgba(22,36,43,0.05);
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatar"] [alt="user"])
+    [data-testid="stChatMessageContent"] {
+    background: linear-gradient(120deg, #0E7C86, #0B5C9E) !important; color: #fff !important;
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatar"] [alt="assistant"])
+    [data-testid="stChatMessageContent"] {
+    background: #F2F6F8 !important; border: 1px solid #E3EBEF !important; color: #16242B !important;
+}
+[data-testid="stChatInput"] textarea {
+    border-radius: 14px !important; border: 1px solid #D8E2E7 !important;
+}
+[data-testid="stChatMessageAvatar"] {
+    background: #0E7C86 !important; border: none !important;
+}
 </style>
 """
 

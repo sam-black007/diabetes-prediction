@@ -49,7 +49,13 @@ class AIClient:
             try:
                 from openai import OpenAI
                 preset_base, default_model = PROVIDER_PRESETS[PROVIDER]
-                base_url = BASE_URL or preset_base
+                # MaaS workspace keys (sk-ws-...) only work on the workspace endpoint,
+                # not Alibaba's public dashscope endpoint. Auto-detect when no explicit
+                # AI_BASE_URL was provided, so a missing secret doesn't cause a 401.
+                if PROVIDER == "qwen" and API_KEY.startswith("sk-ws-") and not BASE_URL:
+                    base_url = "https://ws-8jlpbvhjyuol9pn7.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+                else:
+                    base_url = BASE_URL or preset_base
                 self._model = self._model or default_model
                 self._client = OpenAI(api_key=API_KEY, base_url=base_url)
                 self.mode = PROVIDER
@@ -66,7 +72,8 @@ class AIClient:
                 )
                 return resp.choices[0].message.content
             except Exception as e:
-                return f"({PROVIDER} error: {e})\n\n" + offline_chat(messages)
+                print(f"[AIClient] {PROVIDER} error: {e}")
+                return offline_chat(messages)
         return offline_chat(messages)
 
     def complete(self, prompt, system="You are a helpful medical assistant.", temperature=0.3):
@@ -273,19 +280,15 @@ def offline_chat(messages):
     if "glucose" in last or "sugar" in last:
         return ("Higher blood glucose raises diabetes risk. A fasting level >=126 mg/dL "
                 "or after-meal >=200 mg/dL is in the diabetes range. This app uses the "
-                "after-meal value. (Offline mode — set OPENAI_API_KEY or run Ollama for "
-                "full AI answers.)")
+                "after-meal value.")
     if "bmi" in last:
-        return ("BMI >=25 is overweight and >=30 is obese; both raise diabetes risk. "
-                "(Offline mode — set OPENAI_API_KEY or run Ollama for full AI answers.)")
+        return "BMI >=25 is overweight and >=30 is obese; both raise diabetes risk."
     if "prevent" in last or "reduce" in last or "tip" in last:
         return ("General ways to lower risk: maintain a healthy weight, exercise most "
-                "days, eat more fibre and less refined sugar, and get regular screening. "
-                "(Offline mode — set OPENAI_API_KEY or run Ollama for full AI answers.)")
-    return ("I'm running in offline mode (no OpenAI key or Ollama detected). Set "
-            "OPENAI_API_KEY or install Ollama (https://ollama.com) with `ollama pull "
-            "llama3.1` for full conversational answers. Meanwhile: this app predicts "
-            "diabetes risk from 8 screening values and is not a substitute for a doctor.")
+                "days, eat more fibre and less refined sugar, and get regular screening.")
+    return ("The AI assistant is temporarily unavailable, so here is general guidance: "
+            "this app predicts diabetes risk from 8 screening values and is not a "
+            "substitute for a doctor. For personalised advice, try again shortly.")
 
 
 def offline_enrich(description):
