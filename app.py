@@ -544,6 +544,11 @@ def main():
     # ---------------- Tab 2: Guided Intake (agent asks) ----------------
     with tab2:
         st.subheader("Guided intake — talk to the assistant")
+        if ai.mode != "offline":
+            st.success(f"AI assistant online ({ai.mode})")
+        else:
+            st.warning("AI assistant is offline — add AI_API_KEY (Alibaba MaaS key) in Streamlit "
+                       "secrets to enable the conversational assistant.")
         st.write("No forms to fill. Just answer the assistant's questions in your own words — "
                  "it collects what it needs and runs the assessment for you.")
 
@@ -721,7 +726,12 @@ def main():
     with tab4:
         st.subheader("AI Clinical Assistant")
         provider = ai.mode if ai.mode != "offline" else "Offline fallback"
-        st.caption(f"AI engine: **{provider}** — conversational analysis, patient-context enrichment, and live guideline research.")
+        if ai.mode == "offline":
+            st.warning("AI assistant is offline — add AI_API_KEY (Alibaba MaaS key) in Streamlit "
+                       "secrets to enable the assistant.")
+        else:
+            st.caption(f"AI engine: **{provider}** — conversational analysis, patient-context "
+                       "enrichment, and live guideline research.")
         tool = st.radio("Choose a tool", ["Chat", "Enrich patient data", "Web research"])
 
         if tool == "Chat":
