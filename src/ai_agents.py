@@ -15,10 +15,25 @@ except Exception:
 #   AI_PROVIDER = deepseek | qwen | kimi | siliconflow | openai
 #   AI_API_KEY  = your key from that provider  (OPENAI_API_KEY also accepted)
 #   AI_MODEL    = model name (optional override)
-PROVIDER = os.getenv("AI_PROVIDER", "qwen").lower()
-API_KEY = os.getenv("AI_API_KEY") or os.getenv("OPENAI_API_KEY")
-MODEL = os.getenv("AI_MODEL")
-BASE_URL = os.getenv("AI_BASE_URL")
+def _get(key, default=None):
+    # Prefer real environment variables (loaded from .env locally), then fall
+    # back to Streamlit secrets so the deployed app works when the key is only
+    # set in the Streamlit Cloud "Secrets" panel.
+    v = os.getenv(key)
+    if v is None:
+        try:
+            import streamlit as st
+            if hasattr(st, "secrets") and key in st.secrets:
+                v = st.secrets[key]
+        except Exception:
+            pass
+    return v if v is not None else default
+
+
+PROVIDER = (_get("AI_PROVIDER") or "qwen").lower()
+API_KEY = _get("AI_API_KEY") or _get("OPENAI_API_KEY")
+MODEL = _get("AI_MODEL")
+BASE_URL = _get("AI_BASE_URL")
 
 PROVIDER_PRESETS = {
     # DeepSeek — cheap + free trial credits; strong medical/reasoning.
@@ -45,20 +60,29 @@ class AIClient:
         self.mode = "offline"
         self._client = None
         self._model = MODEL
-        if API_KEY and PROVIDER in PROVIDER_PRESETS:
+        # Alibaba MaaS workspace keys (sk-ws-...) ONLY work on the workspace
+        # endpoint — not the public dashscope endpoint and not OpenAI's. Detect
+        # by key prefix so it works regardless of AI_PROVIDER / AI_BASE_URL.
+        maas_base = "https://ws-8jlpbvhjyuol9pn7.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+        if API_KEY:
             try:
                 from openai import OpenAI
-                preset_base, default_model = PROVIDER_PRESETS[PROVIDER]
-                # MaaS workspace keys (sk-ws-...) only work on the workspace endpoint,
-                # not Alibaba's public dashscope endpoint. Auto-detect when no explicit
-                # AI_BASE_URL was provided, so a missing secret doesn't cause a 401.
-                if PROVIDER == "qwen" and API_KEY.startswith("sk-ws-") and not BASE_URL:
-                    base_url = "https://ws-8jlpbvhjyuol9pn7.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
-                else:
+                if API_KEY.startswith("sk-ws-"):
+                    base_url = maas_base
+                    self._model = self._model or "qwen-plus"
+                    self.mode = "qwen"
+                elif PROVIDER in PROVIDER_PRESETS:
+                    preset_base, default_model = PROVIDER_PRESETS[PROVIDER]
                     base_url = BASE_URL or preset_base
-                self._model = self._model or default_model
-                self._client = OpenAI(api_key=API_KEY, base_url=base_url)
-                self.mode = PROVIDER
+                    self._model = self._model or default_model
+                    self.mode = PROVIDER
+                else:
+                    base_url = BASE_URL
+                    self.mode = PROVIDER
+                if base_url:
+                    self._client = OpenAI(api_key=API_KEY, base_url=base_url)
+                else:
+                    self.mode = "offline"
             except Exception:
                 self.mode = "offline"
 
