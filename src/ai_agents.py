@@ -97,7 +97,12 @@ class AIClient:
                 return resp.choices[0].message.content
             except Exception as e:
                 print(f"[AIClient] {PROVIDER} error: {e}")
-                return offline_chat(messages)
+                return (
+                    f"⚠️ The AI service returned an error ({type(e).__name__}). If it's "
+                    f"401/403, your API key or endpoint is wrong; if it's a connection error, "
+                    f"the host is blocked. Falling back to general guidance.\n\n"
+                    + offline_chat(messages)
+                )
         return offline_chat(messages)
 
     def complete(self, prompt, system="You are a helpful medical assistant.", temperature=0.3):
