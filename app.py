@@ -14,11 +14,36 @@ from reportlab.pdfgen import canvas
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 from report_parser import extract_text_from_pdf, extract_text_from_image, parse_report, OCR_ENGINE
-from ai_agents import (
-    AIClient, chat_agent, enrich_patient_data, web_research_agent,
-    extract_patient_fields, extract_lifestyle, INTAKE_FIELDS,
-    validate_report_values,
-)
+try:
+    from ai_agents import (
+        AIClient, chat_agent, enrich_patient_data, web_research_agent,
+        extract_patient_fields, extract_lifestyle, INTAKE_FIELDS,
+        validate_report_values,
+    )
+except ImportError as _ai_err:
+    st.error(f"AI module failed to load on the server: {_ai_err}. "
+             "The app runs with AI disabled — report OCR and the model still work.")
+    class AIClient:  # offline fallback so the rest of the app keeps working
+        mode = "offline"
+        status_detail = f"import failed: {_ai_err}"
+        def chat(self, messages, system="", temperature=0.3):
+            return "The AI assistant is unavailable on this server."
+        def complete(self, prompt, system="", temperature=0.3):
+            return "The AI assistant is unavailable on this server."
+    def chat_agent(messages, client=None, system=None):
+        return "The AI assistant is unavailable on this server."
+    def enrich_patient_data(description, base_values=None, client=None):
+        return {}
+    def web_research_agent(query, client=None):
+        return "Web research needs the AI module, which failed to load."
+    def extract_patient_fields(history, client=None):
+        return {}
+    def extract_lifestyle(history, client=None):
+        return {}
+    INTAKE_FIELDS = ["Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
+                     "Insulin", "BMI", "DiabetesPedigreeFunction", "Age"]
+    def validate_report_values(ocr_text, regex_parsed, client=None):
+        return {}, []
 from risk_questionnaire import calc_findrisk, calc_bmi, symptom_flags, RED_FLAG_SYMPTOMS
 
 FUN_FACTS = [
