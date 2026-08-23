@@ -35,15 +35,18 @@ if ($LASTEXITCODE -eq 0) {
     }
 }
 
-# Push if a remote is configured
-$remote = git remote
-if ($remote) {
-    git push
+# Push to the diabetes-prediction remote ("project").
+# main tracks origin/random-.git, so an unqualified `git push` would go to the
+# wrong repo. Always target the "project" remote explicitly.
+$targetRemote = "project"
+$targetRemoteUrl = git remote get-url $targetRemote 2>$null
+if ($targetRemoteUrl) {
+    git push $targetRemote main
     if ($LASTEXITCODE -eq 0) {
-        Write-Output "Pushed successfully"
+        Write-Output "Pushed to $targetRemote ($targetRemoteUrl)"
     } else {
-        Write-Output "Push failed - check remote credentials"
+        Write-Output "Push to $targetRemote failed - check remote credentials"
     }
 } else {
-    Write-Output "No remote configured - run: git remote add origin <URL>"
+    Write-Output "Remote '$targetRemote' not configured - run: git remote add project <URL>"
 }
