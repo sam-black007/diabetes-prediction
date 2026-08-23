@@ -79,9 +79,10 @@ AI_PROVIDER=qwen
 # Your API key for that provider (OPENAI_API_KEY also accepted)
 AI_API_KEY=sk-...
 
-# Optional: override the model name
-# qwen-plus = smarter/fuller (recommended); qwen-turbo = faster but less capable
-AI_MODEL=qwen-plus
+# Optional: override the model name.
+# NOTE: this project's Alibaba MaaS workspace key (sk-ws-…) only serves qwen-turbo —
+# qwen-plus returns 401. For a smarter model, use Gemini/OpenRouter instead.
+AI_MODEL=qwen-turbo
 
 # Optional: override the base URL (needed for custom endpoints like Alibaba MaaS)
 AI_BASE_URL=https://ws-....maas.aliyuncs.com/compatible-mode/v1
@@ -92,23 +93,24 @@ so it never breaks.
 
 ---
 
-## Performance — keeping responses under ~5 seconds
+## Performance — keeping responses under ~15 seconds
 
 Slow AI responses are the #1 usability problem, so the agent is tuned for speed:
 
-1. **Model choice** — defaults to the smarter `qwen-plus` (or `gemini-3.6-flash` for
-   Google) for higher-quality answers. Switch `AI_MODEL` to `qwen-turbo` if you need
-   faster (<5s) responses; the rest of the tuning still applies.
+1. **Model choice** — this project's MaaS workspace uses `qwen-turbo` (the model its key
+   serves). For higher-quality answers, switch the provider to Gemini
+   (`AI_PROVIDER=google`, `gemini-3.6-flash`) or OpenRouter; the tuning below keeps the
+   reply fast regardless of which model you pick.
 2. **Capped output** — every completion is limited to `_MAX_TOKENS` (700) so the model
    stops generating early instead of rambling.
 3. **Response cache** — identical prompts (common when Streamlit re-runs the script on every
    widget interaction) are served from an in-memory cache, skipping the network call entirely.
-4. **Fail-fast timeouts** — the client uses `timeout=45` and `max_retries=1` instead of the
+4. **Fail-fast timeouts** — the client uses `timeout=15` and `max_retries=1` instead of the
    SDK defaults (~600s), so a stalled endpoint fails quickly rather than hanging the UI.
 5. **Short backoff** — on rate-limit it waits 3s / 6s (was 8s / 16s) before retrying.
 
-Each interaction is one or two LLM calls, so with a fast model + caching the typical reply
-lands well under 5 seconds.
+Each interaction is one or two LLM calls, so with caching the typical reply lands well
+under 15 seconds.
 
 ---
 
