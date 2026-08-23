@@ -59,20 +59,12 @@ def _fb_extract_lifestyle(history, client=None):
     return {}
 
 
-def _fb_validate(ocr_text, regex_parsed, client=None):
-    return {}, []
-
-
 def _fb_assess(values, client=None, context=None):
     return {}
 
 
 def _fb_collect(answer_text, needed_list, client=None):
     return {}
-
-
-def _fb_explain(values, outcome, client=None):
-    return ""
 
 
 def _fb_validate_explain(regex_parsed, outcome, values, client=None):
@@ -104,10 +96,8 @@ enrich_patient_data = _bind("enrich_patient_data", _fb_enrich)
 web_research_agent = _bind("web_research_agent", _fb_web)
 extract_patient_fields = _bind("extract_patient_fields", _fb_extract_fields)
 extract_lifestyle = _bind("extract_lifestyle", _fb_extract_lifestyle)
-validate_report_values = _bind("validate_report_values", _fb_validate)
 assess_diabetes_risk = _bind("assess_diabetes_risk", _fb_assess)
 collect_missing_fields = _bind("collect_missing_fields", _fb_collect)
-explain_verdict = _bind("explain_verdict", _fb_explain)
 validate_and_explain_report = _bind("validate_and_explain_report", _fb_validate_explain)
 suggest_next_steps = _bind("suggest_next_steps", _fb_suggest_next)
 suggest_missing_values = _bind("suggest_missing_values", _fb_suggest_missing)
@@ -1042,9 +1032,9 @@ def main():
                                          "hba1c_pct": eff_a1c},
                                         ocr_text=text, client=ai)
                                 except Exception:
-                                    comb = ({}, [], "")
+                                    comb = ({}, [], "", [])
                             st.session_state["_rep_comb"] = (comb_key, comb)
-                        ai_vals2, corrections2, expl = comb
+                        ai_vals2, corrections2, expl, next_steps = comb
                         if corrections2:
                             with st.expander("Show AI corrections (parser vs AI)"):
                                 for c in corrections2:
@@ -1053,23 +1043,11 @@ def main():
                         if expl:
                             st.markdown("#### AI agent explanation")
                             st.write(expl)
-                        # Personalized AI next-step suggestions (one cached call).
-                        sugg_key = "sugg_" + comb_key
-                        sugg = st.session_state.get(sugg_key)
-                        if sugg is None:
-                            with st.spinner("AI is preparing your personalized tips..."):
-                                try:
-                                    sugg = suggest_next_steps(
-                                        {"age": age_eff, "sex": sex_eff, "bmi": bmi_val,
-                                         "fasting_glucose_mg_dl": eff_fast,
-                                         "after_meal_glucose_mg_dl": eff_pp,
-                                         "hba1c_pct": eff_a1c}, outcome, ai)
-                                except Exception:
-                                    sugg = []
-                            st.session_state[sugg_key] = sugg
-                        if sugg:
+                        # Personalized next steps come from the SAME AI call above
+                        # (keeps the whole conclusion under the 15s budget).
+                        if next_steps:
                             st.markdown("#### ✅ Your personalized next steps")
-                            for t in sugg:
+                            for t in next_steps:
                                 st.write(f"- {t}")
                 else:
                     st.warning("Inconclusive — " + outcome["detail"])

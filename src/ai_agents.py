@@ -62,6 +62,26 @@ PROVIDER_PRESETS = {
 }
 
 
+# Cap generated tokens so the model stops early — shorter answers = faster
+# responses (the main lever for staying under ~5s per call).
+_MAX_TOKENS = 700
+# In-memory cache so identical prompts (e.g. Streamlit script reruns) don't
+# trigger a fresh, slow network call.
+_RESPONSE_CACHE = {}
+_RESPONSE_CACHE_MAX = 256
+
+
+def _cache_key(system, messages, model):
+    try:
+        payload = _json.dumps(
+            [system, [[m.get("role"), m.get("content")] for m in messages]],
+            ensure_ascii=False, sort_keys=True,
+        ) + "|" + str(model)
+    except Exception:
+        return None
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+
 class AIClient:
     """Cloud LLM client (no local model needed).
 
@@ -116,10 +136,11 @@ class AIClient:
             if base_url:
                 # Cap the client timeout/retries so a stalled endpoint fails fast
                 # (default is ~600s + 2 retries, which makes the UI hang for minutes).
+                # 15s keeps every AI response under the user's 15-second budget.
                 self._client = OpenAI(
                     api_key=API_KEY,
                     base_url=base_url,
-                    timeout=45,
+                    timeout=15,
                     max_retries=1,
                 )
                 trunc = f" [key looks truncated, len={len(API_KEY)}]" if len(API_KEY) < 40 else ""
@@ -131,68 +152,48 @@ class AIClient:
             self.mode = "offline"
             self.status_detail = f"client init failed: {type(e).__name__}: {e}"
 
-# Cap generated tokens so the model stops early — shorter answers = faster
-# responses (the main lever for staying under ~5s per call).
-_MAX_TOKENS = 700
-# In-memory cache so identical prompts (e.g. Streamlit script reruns) don't
-# trigger a fresh, slow network call.
-_RESPONSE_CACHE = {}
-_RESPONSE_CACHE_MAX = 256
-
-
-def _cache_key(system, messages, model):
-    try:
-        payload = _json.dumps(
-            [system, [[m.get("role"), m.get("content")] for m in messages]],
-            ensure_ascii=False, sort_keys=True,
-        ) + "|" + str(model)
-    except Exception:
-        return None
-    return hashlib.md5(payload.encode("utf-8")).hexdigest()
-
-
-def chat(self, messages, system="You are a helpful medical assistant.",
-         temperature=0.3, use_cache=True):
-    if self._client is not None:
-        key = _cache_key(system, messages, self._model) if use_cache else None
-        if key is not None and key in _RESPONSE_CACHE:
-            return _RESPONSE_CACHE[key]
-        last_err = None
-        for attempt in range(3):
-            try:
-                resp = self._client.chat.completions.create(
-                    model=self._model,
-                    messages=[{"role": "system", "content": system}] + messages,
-                    temperature=temperature,
-                    max_tokens=_MAX_TOKENS,
-                )
-                out = resp.choices[0].message.content
-                if key is not None:
-                    if len(_RESPONSE_CACHE) >= _RESPONSE_CACHE_MAX:
-                        _RESPONSE_CACHE.clear()
-                    _RESPONSE_CACHE[key] = out
-                return out
-            except Exception as e:
-                last_err = e
-                transient = ("429" in str(e) or "RateLimit" in type(e).__name__
-                             or "quota" in str(e).lower())
-                if transient and attempt < 2:
-                    time.sleep(3 * (attempt + 1))
-                    continue
-                break
-        e = last_err
-        if "429" in str(e) or "RateLimit" in type(e).__name__:
-            print(f"[AIClient] {PROVIDER} rate-limited: {e}")
-            return ("⏳ The free AI tier is busy right now — please wait about a "
-                    "minute and try again.\n\n" + offline_chat(messages))
-        print(f"[AIClient] {PROVIDER} error: {e}")
-        return (
-            f"⚠️ The AI service returned an error ({type(e).__name__}). If it's "
-            f"401/403, your API key or endpoint is wrong; if it's a connection error, "
-            f"the host is blocked. Falling back to general guidance.\n\n"
-            + offline_chat(messages)
-        )
-    return offline_chat(messages)
+    def chat(self, messages, system="You are a helpful medical assistant.",
+             temperature=0.3, use_cache=True):
+        if self._client is not None:
+            key = _cache_key(system, messages, self._model) if use_cache else None
+            if key is not None and key in _RESPONSE_CACHE:
+                return _RESPONSE_CACHE[key]
+            last_err = None
+            for attempt in range(3):
+                try:
+                    resp = self._client.chat.completions.create(
+                        model=self._model,
+                        messages=[{"role": "system", "content": system}] + messages,
+                        temperature=temperature,
+                        max_tokens=_MAX_TOKENS,
+                    )
+                    out = resp.choices[0].message.content
+                    if key is not None:
+                        if len(_RESPONSE_CACHE) >= _RESPONSE_CACHE_MAX:
+                            _RESPONSE_CACHE.clear()
+                        _RESPONSE_CACHE[key] = out
+                    return out
+                except Exception as e:
+                    last_err = e
+                    transient = ("429" in str(e) or "RateLimit" in type(e).__name__
+                                 or "quota" in str(e).lower())
+                    if transient and attempt < 2:
+                        time.sleep(3 * (attempt + 1))
+                        continue
+                    break
+            e = last_err
+            if "429" in str(e) or "RateLimit" in type(e).__name__:
+                print(f"[AIClient] {PROVIDER} rate-limited: {e}")
+                return ("⏳ The free AI tier is busy right now — please wait about a "
+                        "minute and try again.\n\n" + offline_chat(messages))
+            print(f"[AIClient] {PROVIDER} error: {e}")
+            return (
+                f"⚠️ The AI service returned an error ({type(e).__name__}). If it's "
+                f"401/403, your API key or endpoint is wrong; if it's a connection error, "
+                f"the host is blocked. Falling back to general guidance.\n\n"
+                + offline_chat(messages)
+            )
+        return offline_chat(messages)
 
     def complete(self, prompt, system="You are a helpful medical assistant.", temperature=0.3):
         return self.chat([{"role": "user", "content": prompt}], system, temperature)
@@ -280,58 +281,19 @@ REPORT_VALUE_KEYS = [
 ]
 
 
-def validate_report_values(ocr_text, regex_parsed, client=None):
-    """Cross-check OCR text against the regex parser using the AI.
-
-    The AI re-reads the raw OCR text (ground truth), normalizes units, and
-    returns (values, corrections): its best-estimate numbers plus a list of
-    every field where its reading differs from the regex parser's, so the
-    user can see and resolve disagreements.
-    """
-    client = client or AIClient()
-    prompt = (
-        "Below is the raw OCR text of a medical lab report and the values a regex "
-        "parser extracted from it. Re-read the OCR text yourself and return ONLY a "
-        'valid JSON object (no prose) with two keys: "values" and "corrections".\n'
-        '"values": an object with numeric-or-null entries for exactly these keys: '
-        + ", ".join(REPORT_VALUE_KEYS) + ". "
-        "Normalize glucose to mg/dL (if the report uses mmol/L multiply by 18) and "
-        "HbA1c to percent. blood_pressure_systolic is the top (systolic) number. "
-        "Use null when a value is truly absent from the report.\n"
-        '"corrections": a list of {"field", "regex_value", "ai_value", "reason"} for '
-        "every field where your reading differs from the parser's (empty list if none).\n\n"
-        f"Parser values: {json.dumps(regex_parsed)}\n\nOCR text:\n{ocr_text}"
-    )
-    system = "You are a careful medical-data extraction assistant. Respond with valid JSON only."
-    raw = client.complete(prompt, system, temperature=0.0)
-    data = _extract_json(raw)
-    if not data:
-        return {}, []
-    vals = {}
-    for k, v in (data.get("values") or {}).items():
-        try:
-            if v is not None:
-                vals[k] = float(v)
-        except Exception:
-            pass
-    corrections = data.get("corrections") or []
-    if not isinstance(corrections, list):
-        corrections = []
-    return vals, corrections
-
-
 def validate_and_explain_report(regex_parsed, outcome, values, ocr_text=None, client=None):
-    """One LLM call that both cross-checks the OCR/parser values AND writes the
-    patient-friendly explanation for the rule-based WHO/ADA outcome.
+    """One LLM call that cross-checks the OCR/parser values, writes the
+    patient-friendly explanation for the rule-based WHO/ADA outcome, AND returns
+    personalized next-step tips.
 
     Pass the raw OCR text so the AI reads the report directly (not only the
     regex parser's output) — this catches values the parser missed.
-    Returns (ai_values, corrections, explanation) so the report tab only needs a
-    single network round-trip instead of two (validate + explain).
+    Returns (ai_values, corrections, explanation, next_steps) — a single network
+    round-trip for the whole report conclusion.
     """
     client = client or AIClient()
     if client.mode == "offline":
-        return {}, [], ""
+        return {}, [], "", []
     prompt = (
         "Below is the raw OCR text of a medical lab report, the values a regex parser "
         "extracted from it, the rule-based WHO/ADA conclusion, and the patient's final "
@@ -341,7 +303,7 @@ def validate_and_explain_report(regex_parsed, outcome, values, ocr_text=None, cl
         f"Clinical conclusion: {outcome.get('state', 'Inconclusive')} — "
         f"{outcome.get('detail', '')}\n"
         f"Patient values (for context): {json.dumps(values)}\n\n"
-        "Do THREE things and return ONLY one valid JSON object (no prose) with keys:\n"
+        "Do FOUR things and return ONLY one valid JSON object (no prose) with keys:\n"
         '1) "values": an object with numeric-or-null entries for exactly these keys: '
         + ", ".join(REPORT_VALUE_KEYS) + ". Re-read the RAW OCR text yourself and prefer "
         "it over the parser when they disagree. Normalize glucose to mg/dL (mmol/L * 18) "
@@ -349,15 +311,16 @@ def validate_and_explain_report(regex_parsed, outcome, values, ocr_text=None, cl
         '2) "corrections": a list of {"field", "regex_value", "ai_value", "reason"} for '
         "every field where your reading differs from the parser's (empty list if none).\n"
         '3) "explanation": 2-4 warm, plain sentences explaining the conclusion using the '
-        "patient's actual numbers, giving 2-3 next steps. End by noting this is screening, "
-        "not a diagnosis."
+        "patient's actual numbers. End by noting this is screening, not a diagnosis.\n"
+        '4) "next_steps": a JSON array of 3-5 short, personalized next-step tips that '
+        "follow from these specific numbers (bullet-style strings, no numbering)."
     )
     system = ("You are a careful medical-data extraction and screening assistant. "
               "Respond with valid JSON only.")
     raw = client.complete(prompt, system, temperature=0.2)
     data = _extract_json(raw)
     if not data:
-        return {}, [], ""
+        return {}, [], "", []
     vals = {}
     for k, v in (data.get("values") or {}).items():
         try:
@@ -369,7 +332,10 @@ def validate_and_explain_report(regex_parsed, outcome, values, ocr_text=None, cl
     if not isinstance(corrections, list):
         corrections = []
     explanation = str(data.get("explanation") or "")
-    return vals, corrections, explanation
+    next_steps = data.get("next_steps") or []
+    if not isinstance(next_steps, list):
+        next_steps = [str(t) for t in next_steps]
+    return vals, corrections, explanation, next_steps
 
 
 def assess_diabetes_risk(values, client=None, context=None):
@@ -453,30 +419,6 @@ def collect_missing_fields(answer_text, needed_list, client=None):
             except Exception:
                 pass
     return out
-
-
-def explain_verdict(values, outcome, client=None):
-    """Write the patient-friendly explanation for a rule-based WHO/ADA outcome.
-
-    outcome is a dict like {"state": "Diabetic"|"Prediabetic"|"Normal"|
-    "Inconclusive", "detail": str}. The rules already decided — the AI only
-    explains, it never changes the verdict.
-    """
-    client = client or AIClient()
-    prompt = (
-        "A diabetes screening app applied WHO/ADA diagnostic thresholds to a "
-        "patient's report values and reached this conclusion:\n"
-        f"Conclusion: {outcome.get('state', 'Inconclusive')}\n"
-        f"Why (rule-based): {outcome.get('detail', '')}\n"
-        f"Patient values: {json.dumps(values)}\n\n"
-        "Write the explanation shown to the patient: 2-4 warm, plain sentences that "
-        "cite their actual numbers, say what the conclusion means, and give 2-3 "
-        "concrete next steps. If the conclusion is Inconclusive, explain exactly "
-        "which test they should take. End by noting this is screening, not a "
-        "diagnosis. Reply with plain text only."
-    )
-    system = "You are a warm, careful medical screening assistant."
-    return client.complete(prompt, system, temperature=0.3)
 
 
 def suggest_next_steps(values, outcome, client=None):
