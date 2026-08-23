@@ -75,6 +75,10 @@ def _fb_explain(values, outcome, client=None):
     return ""
 
 
+def _fb_validate_explain(regex_parsed, outcome, values, client=None):
+    return {}, [], ""
+
+
 INTAKE_FIELDS = ["Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
                  "Insulin", "BMI", "DiabetesPedigreeFunction", "Age"]
 
@@ -96,6 +100,7 @@ validate_report_values = _bind("validate_report_values", _fb_validate)
 assess_diabetes_risk = _bind("assess_diabetes_risk", _fb_assess)
 collect_missing_fields = _bind("collect_missing_fields", _fb_collect)
 explain_verdict = _bind("explain_verdict", _fb_explain)
+validate_and_explain_report = _bind("validate_and_explain_report", _fb_validate_explain)
 if _ai_mod is not None:
     INTAKE_FIELDS = getattr(_ai_mod, "INTAKE_FIELDS", INTAKE_FIELDS)
 
@@ -441,52 +446,6 @@ def hero_svg_data_uri():
             return "data:image/svg+xml;base64," + base64.b64encode(f.read()).decode()
     except Exception:
         return ""
-    level, color = risk_level(prob, threshold)
-    border_cls = {"Low risk": "result-safe", "Moderate risk": "result-warn",
-                  "High risk": "result-alert"}.get(level, "result-safe")
-    fun_caption = {
-        "Low risk": "🎉 You're looking sweet — in the good way! Keep it up.",
-        "Moderate risk": "🙂 Worth a closer look — small lifestyle tweaks go a long way.",
-        "High risk": "⚠️ Heads up — let's get ahead of this with a pro.",
-    }.get(level, "")
-    if pred == 1:
-        st.error(f"### 🚩 Result: Diabetes likely\n\n{fun_caption}")
-    else:
-        st.success(f"### 🎉 Result: No diabetes\n\n{fun_caption}")
-        st.balloons()
-    st.markdown(
-        f'<div class="{border_cls}" style="padding:10px 14px;background:#FFFFFF;border-radius:10px;">'
-        f'<b>Risk level:</b> <span style="color:{color};font-weight:bold">{level}</span><br>'
-        f'<b>Probability of diabetes:</b> {prob:.1%}'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-    st.progress(int(prob * 100))
-    st.caption("Screening estimate only — validation accuracy ~77% (sensitivity 82%, specificity 74%). "
-               "Confirm with a clinician via fasting glucose / HbA1c.")
-
-    st.markdown("#### 💪 Health tips")
-    for tip in health_tips(values):
-        st.write(f"- ✅ {tip}")
-
-    with st.expander("💡 Did you know?"):
-        st.write(random.choice(FUN_FACTS))
-
-    record = {
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "result": "Diabetes likely" if pred == 1 else "No diabetes",
-        "risk": f"{prob:.1%}",
-        **{k: round(float(v), 2) for k, v in values.items()},
-    }
-    save_prediction(record)
-
-    pdf_bytes = make_pdf(pred, prob, values, threshold)
-    st.download_button(
-        "Download result as PDF", data=pdf_bytes,
-        file_name=f"diabetes_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-        mime="application/pdf",
-    )
-    render_history()
 
 def glucose_interpretation(value, kind):
     if kind == "fasting":
@@ -849,23 +808,24 @@ def main():
                 st.image(report, caption="Uploaded report photo", width=400)
             sig = (report.name, getattr(report, "size", None)) if report is not None else ("pasted", hash(pasted.strip()))
             if st.session_state.get("_rep_sig") != sig:
-                with st.spinner("Reading report (OCR + AI cross-check)..."):
+                with st.spinner("Reading report (OCR)..."):
                     text = ""
                     if report is not None:
                         text = extract_text_from_image(report) if is_image else extract_text_from_pdf(report)
                     if pasted.strip():
                         text = (text + "\n" + pasted.strip()).strip() if text else pasted.strip()
                     parsed = parse_report(text)
+                    # The AI review (validation cross-check + explanation) is done
+                    # ONCE at the conclusion step below, so a report needs only a
+                    # single LLM call instead of two.
                     ai_vals, corrections = {}, []
-                    if text.strip() and ai.mode != "offline":
-                        ai_vals, corrections = validate_report_values(text, parsed, ai)
                     st.session_state.update({
                         "_rep_sig": sig, "_rep_text": text, "_rep_parsed": parsed,
                         "_rep_ai_vals": ai_vals, "_rep_corrections": corrections,
                     })
                     _init_report_fields(parsed, ai_vals, medians)
                     for k in list(st.session_state.keys()):
-                        if k.startswith("_ans_") or k == "_rep_expl":
+                        if k.startswith("_ans_") or k in ("_rep_expl", "_rep_comb"):
                             del st.session_state[k]
                 st.caption(f"OCR engine: {OCR_ENGINE} · extracted {len(text.strip())} characters.")
             else:
@@ -879,22 +839,12 @@ def main():
                 with st.expander("Show OCR text"):
                     st.text(text[:1500])
             else:
-                st.success("Report read — OCR and AI cross-checked. Review the values, then assess.")
+                st.success("Report read — OCR complete. Review the values, then assess.")
                 n_real = sum(
-                    1 for _l, _k, pk, ak, _s in REPORT_FIELDS
-                    if parsed.get(pk) is not None or ai_vals.get(ak) is not None
+                    1 for _l, _k, pk, _s2 in REPORT_FIELDS
+                    if parsed.get(pk) is not None
                 )
-                if ai_vals:
-                    st.caption(f"AI cross-check done · {len(corrections)} correction(s) · "
-                               f"coverage {n_real}/{len(REPORT_FIELDS)} fields read from the report.")
-                else:
-                    st.caption("AI cross-check unavailable (offline) — parser values only. "
-                               f"Coverage {n_real}/{len(REPORT_FIELDS)}. Reason: {ai.status_detail}")
-                if corrections:
-                    with st.expander("Show AI corrections (parser vs AI)"):
-                        for c in corrections:
-                            st.write(f"- **{c.get('field')}**: parser {c.get('regex_value')} "
-                                     f"→ AI {c.get('ai_value')} — {c.get('reason', '')}")
+                st.caption(f"OCR coverage {n_real}/{len(REPORT_FIELDS)} fields read from the report.")
 
                 conflicts = [
                     (label, key, rv, av)
@@ -1012,23 +962,32 @@ def main():
                     </div>
                     ''', unsafe_allow_html=True)
                     if ai.mode != "offline":
-                        expl_key = str(hash((outcome["state"], outcome["detail"],
+                        # Single combined AI call: validates the parser values AND
+                        # explains the WHO/ADA conclusion (was two separate calls).
+                        comb_key = str(hash((outcome["state"], outcome["detail"],
                                              eff_fast, eff_pp, eff_a1c,
-                                             age_eff, sex_eff, bmi_val)))
-                        cached = st.session_state.get("_rep_expl") or ()
-                        expl = cached[1] if cached and cached[0] == expl_key else None
-                        if not expl:
-                            with st.spinner("AI agent is explaining..."):
+                                             age_eff, sex_eff, bmi_val,
+                                             json.dumps(parsed, sort_keys=True))))
+                        cached = st.session_state.get("_rep_comb") or ()
+                        comb = cached[1] if cached and cached[0] == comb_key else None
+                        if not comb:
+                            with st.spinner("AI agent is reviewing the report..."):
                                 try:
-                                    expl = explain_verdict(
+                                    comb = validate_and_explain_report(
+                                        parsed, outcome,
                                         {"age": age_eff, "sex": sex_eff, "bmi": bmi_val,
                                          "fasting_glucose_mg_dl": eff_fast,
                                          "after_meal_glucose_mg_dl": eff_pp,
-                                         "hba1c_pct": eff_a1c},
-                                        outcome, ai)
+                                         "hba1c_pct": eff_a1c}, ai)
                                 except Exception:
-                                    expl = ""
-                            st.session_state["_rep_expl"] = (expl_key, expl)
+                                    comb = ({}, [], "")
+                            st.session_state["_rep_comb"] = (comb_key, comb)
+                        ai_vals2, corrections2, expl = comb
+                        if corrections2:
+                            with st.expander("Show AI corrections (parser vs AI)"):
+                                for c in corrections2:
+                                    st.write(f"- **{c.get('field')}**: parser {c.get('regex_value')} "
+                                             f"→ AI {c.get('ai_value')} — {c.get('reason', '')}")
                         if expl:
                             st.markdown("#### AI agent explanation")
                             st.write(expl)

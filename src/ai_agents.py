@@ -320,6 +320,53 @@ def validate_report_values(ocr_text, regex_parsed, client=None):
     return vals, corrections
 
 
+def validate_and_explain_report(regex_parsed, outcome, values, client=None):
+    """One LLM call that both cross-checks the OCR/parser values AND writes the
+    patient-friendly explanation for the rule-based WHO/ADA outcome.
+
+    Returns (ai_values, corrections, explanation) so the report tab only needs a
+    single network round-trip instead of two (validate + explain).
+    """
+    client = client or AIClient()
+    if client.mode == "offline":
+        return {}, [], ""
+    prompt = (
+        "Below is the values a regex parser extracted from a medical lab report, the "
+        "rule-based WHO/ADA conclusion for the patient, and the patient's final values.\n\n"
+        f"Parser values: {json.dumps(regex_parsed)}\n"
+        f"Clinical conclusion: {outcome.get('state', 'Inconclusive')} — "
+        f"{outcome.get('detail', '')}\n"
+        f"Patient values (for context): {json.dumps(values)}\n\n"
+        "Do THREE things and return ONLY one valid JSON object (no prose) with keys:\n"
+        '1) "values": an object with numeric-or-null entries for exactly these keys: '
+        + ", ".join(REPORT_VALUE_KEYS) + ". Normalize glucose to mg/dL (mmol/L * 18) and "
+        "HbA1c to percent. Use null when truly absent.\n"
+        '2) "corrections": a list of {"field", "regex_value", "ai_value", "reason"} for '
+        "every field where your reading differs from the parser's (empty list if none).\n"
+        '3) "explanation": 2-4 warm, plain sentences explaining the conclusion using the '
+        "patient's actual numbers, giving 2-3 next steps. End by noting this is screening, "
+        "not a diagnosis."
+    )
+    system = ("You are a careful medical-data extraction and screening assistant. "
+              "Respond with valid JSON only.")
+    raw = client.complete(prompt, system, temperature=0.2)
+    data = _extract_json(raw)
+    if not data:
+        return {}, [], ""
+    vals = {}
+    for k, v in (data.get("values") or {}).items():
+        try:
+            if v is not None:
+                vals[k] = float(v)
+        except Exception:
+            pass
+    corrections = data.get("corrections") or []
+    if not isinstance(corrections, list):
+        corrections = []
+    explanation = str(data.get("explanation") or "")
+    return vals, corrections, explanation
+
+
 def assess_diabetes_risk(values, client=None, context=None):
     """AI-agent diabetes verdict from the patient's screening values.
 

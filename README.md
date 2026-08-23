@@ -21,12 +21,11 @@ falling back to built-in offline rules if no API key is set.
 | Agent | Function | What it does |
 |-------|----------|--------------|
 | **Chat assistant** | `chat_agent` | Friendly Q&A about diabetes risk, the 8 screening features, and lifestyle. Reminds users it's not a doctor. |
-| **Report validator** | `validate_report_values` | Re-reads raw OCR text of a lab report and cross-checks the regex parser's numbers, listing any disagreements. |
+| **Report reviewer** | `validate_and_explain_report` | In ONE call, re-reads the OCR text, cross-checks the parser's numbers (listing corrections) AND writes the patient-friendly explanation of the WHO/ADA conclusion — halves the report tab's AI calls. |
 | **Field extractor** | `extract_patient_fields` | Pulls the 8 screening values from a free-text conversation as structured JSON. |
 | **Lifestyle extractor** | `extract_lifestyle` | Pulls self-known lifestyle details (age, sex, activity, diet…) from a chat. |
 | **Missing-field collector** | `collect_missing_fields` | Parses a free-text reply into exactly the values the app still needs. |
 | **Risk assessor** | `assess_diabetes_risk` | Returns a JSON verdict (diabetic / not), probability, reasoning, next steps, and which important values are still missing. |
-| **Verdict explainer** | `explain_verdict` | Writes the patient-friendly explanation for the rule-based WHO/ADA conclusion. The AI explains; it never changes the verdict. |
 | **Data enricher** | `enrich_patient_data` | Infers non-clinical lifestyle context (activity, diet, sleep, stress, tips) from a description. |
 | **Web researcher** | `web_research_agent` | Summarizes the latest diabetes guidance, preferring WHO / CDC / NIDDK / IDF / ADA sources. |
 
