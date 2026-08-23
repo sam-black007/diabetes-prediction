@@ -50,7 +50,7 @@ Built-in presets (in `PROVIDER_PRESETS`):
 | `openrouter` | `nvidia/nemotron-3-nano-30b-a3b:free` | `https://openrouter.ai/api/v1` |
 | `google` / `gemini` | `gemini-3.6-flash` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
 | `deepseek` | `deepseek-chat` | `https://api.deepseek.com` |
-| `qwen` | `qwen-turbo` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `qwen` | `qwen-plus` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | `kimi` | `moonshot-v1-8k` | `https://api.moonshot.cn/v1` |
 | `siliconflow` | `deepseek-ai/DeepSeek-V3` | `https://api.siliconflow.cn/v1` |
 | `openai` | `gpt-4o-mini` | (official) |
@@ -80,7 +80,8 @@ AI_PROVIDER=qwen
 AI_API_KEY=sk-...
 
 # Optional: override the model name
-AI_MODEL=qwen-turbo
+# qwen-plus = smarter/fuller (recommended); qwen-turbo = faster but less capable
+AI_MODEL=qwen-plus
 
 # Optional: override the base URL (needed for custom endpoints like Alibaba MaaS)
 AI_BASE_URL=https://ws-....maas.aliyuncs.com/compatible-mode/v1
@@ -95,8 +96,9 @@ so it never breaks.
 
 Slow AI responses are the #1 usability problem, so the agent is tuned for speed:
 
-1. **Fast model by default** — ships on `qwen-turbo` (or `gemini-3.6-flash` for Google),
-   not the heavier `qwen-plus`, to cut per-call latency.
+1. **Model choice** — defaults to the smarter `qwen-plus` (or `gemini-3.6-flash` for
+   Google) for higher-quality answers. Switch `AI_MODEL` to `qwen-turbo` if you need
+   faster (<5s) responses; the rest of the tuning still applies.
 2. **Capped output** — every completion is limited to `_MAX_TOKENS` (700) so the model
    stops generating early instead of rambling.
 3. **Response cache** — identical prompts (common when Streamlit re-runs the script on every
