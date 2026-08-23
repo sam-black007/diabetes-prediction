@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import time
 import requests
 
 try:
@@ -43,7 +44,9 @@ MODEL = _get("AI_MODEL")
 BASE_URL = _get("AI_BASE_URL")
 
 PROVIDER_PRESETS = {
-    # Google Gemini — generous free tier via AI Studio; OpenAI-compatible endpoint.
+    # OpenRouter — one key, many models; ":free" models cost nothing.
+    "openrouter": ("https://openrouter.ai/api/v1", "nvidia/nemotron-3.5-lightning:free"),
+    # Google Gemini - generous free tier via AI Studio; OpenAI-compatible endpoint.
     "google":     ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-3.6-flash"),
     "gemini":     ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-3.6-flash"),
     # DeepSeek — cheap + free trial credits; strong medical/reasoning.
@@ -83,7 +86,13 @@ class AIClient:
                                   f"paste the FULL key copied from the CSV file")
         try:
             from openai import OpenAI
-            if API_KEY.startswith(("AIza", "AQ.")):
+            if API_KEY.startswith("sk-or-"):
+                # OpenRouter key — one API for many models; prefer ":free" models.
+                base_url = PROVIDER_PRESETS["openrouter"][0]
+                self._model = self._model if (self._model and "/" in self._model) \
+                    else "nvidia/nemotron-3.5-lightning:free"
+                self.mode = "openrouter"
+            elif API_KEY.startswith(("AIza", "AQ.")):
                 # Google AI Studio key ("AIza..." classic or "AQ." new format) —
                 # use Gemini's OpenAI-compatible endpoint regardless of AI_PROVIDER.
                 base_url = PROVIDER_PRESETS["google"][0]
@@ -116,21 +125,35 @@ class AIClient:
 
     def chat(self, messages, system="You are a helpful medical assistant.", temperature=0.3):
         if self._client is not None:
-            try:
-                resp = self._client.chat.completions.create(
-                    model=self._model,
-                    messages=[{"role": "system", "content": system}] + messages,
-                    temperature=temperature,
-                )
-                return resp.choices[0].message.content
-            except Exception as e:
-                print(f"[AIClient] {PROVIDER} error: {e}")
-                return (
-                    f"⚠️ The AI service returned an error ({type(e).__name__}). If it's "
-                    f"401/403, your API key or endpoint is wrong; if it's a connection error, "
-                    f"the host is blocked. Falling back to general guidance.\n\n"
-                    + offline_chat(messages)
-                )
+            last_err = None
+            for attempt in range(3):
+                try:
+                    resp = self._client.chat.completions.create(
+                        model=self._model,
+                        messages=[{"role": "system", "content": system}] + messages,
+                        temperature=temperature,
+                    )
+                    return resp.choices[0].message.content
+                except Exception as e:
+                    last_err = e
+                    transient = ("429" in str(e) or "RateLimit" in type(e).__name__
+                                 or "quota" in str(e).lower())
+                    if transient and attempt < 2:
+                        time.sleep(8 * (attempt + 1))
+                        continue
+                    break
+            e = last_err
+            if "429" in str(e) or "RateLimit" in type(e).__name__:
+                print(f"[AIClient] {PROVIDER} rate-limited: {e}")
+                return ("⏳ The free AI tier is busy right now — please wait about a "
+                        "minute and try again.\n\n" + offline_chat(messages))
+            print(f"[AIClient] {PROVIDER} error: {e}")
+            return (
+                f"⚠️ The AI service returned an error ({type(e).__name__}). If it's "
+                f"401/403, your API key or endpoint is wrong; if it's a connection error, "
+                f"the host is blocked. Falling back to general guidance.\n\n"
+                + offline_chat(messages)
+            )
         return offline_chat(messages)
 
     def complete(self, prompt, system="You are a helpful medical assistant.", temperature=0.3):
@@ -551,3 +574,4 @@ def offline_enrich(description):
         "summary": "(Offline heuristic enrichment — set OPENAI_API_KEY or run Ollama for AI-generated context.)",
         "dynamic_tips": tips,
     }
+

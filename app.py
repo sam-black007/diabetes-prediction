@@ -865,7 +865,7 @@ def main():
                     })
                     _init_report_fields(parsed, ai_vals, medians)
                     for k in list(st.session_state.keys()):
-                        if k.startswith("_ans_"):
+                        if k.startswith("_ans_") or k == "_rep_expl":
                             del st.session_state[k]
                 st.caption(f"OCR engine: {OCR_ENGINE} · extracted {len(text.strip())} characters.")
             else:
@@ -1012,16 +1012,23 @@ def main():
                     </div>
                     ''', unsafe_allow_html=True)
                     if ai.mode != "offline":
-                        with st.spinner("AI agent is explaining..."):
-                            try:
-                                expl = explain_verdict(
-                                    {"age": age_eff, "sex": sex_eff, "bmi": bmi_val,
-                                     "fasting_glucose_mg_dl": eff_fast,
-                                     "after_meal_glucose_mg_dl": eff_pp,
-                                     "hba1c_pct": eff_a1c},
-                                    outcome, ai)
-                            except Exception:
-                                expl = ""
+                        expl_key = str(hash((outcome["state"], outcome["detail"],
+                                             eff_fast, eff_pp, eff_a1c,
+                                             age_eff, sex_eff, bmi_val)))
+                        cached = st.session_state.get("_rep_expl") or ()
+                        expl = cached[1] if cached and cached[0] == expl_key else None
+                        if not expl:
+                            with st.spinner("AI agent is explaining..."):
+                                try:
+                                    expl = explain_verdict(
+                                        {"age": age_eff, "sex": sex_eff, "bmi": bmi_val,
+                                         "fasting_glucose_mg_dl": eff_fast,
+                                         "after_meal_glucose_mg_dl": eff_pp,
+                                         "hba1c_pct": eff_a1c},
+                                        outcome, ai)
+                                except Exception:
+                                    expl = ""
+                            st.session_state["_rep_expl"] = (expl_key, expl)
                         if expl:
                             st.markdown("#### AI agent explanation")
                             st.write(expl)
