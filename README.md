@@ -128,6 +128,59 @@ The app always works — the AI just makes it smarter.
 
 ---
 
+## Accuracy & validation
+
+The risk model is a classical ML classifier trained and evaluated on the
+**PIMA Indians Diabetes Database** (768 records, 8 clinical features: pregnancies, glucose,
+blood pressure, skin thickness, insulin, BMI, diabetes pedigree, age) — the same 8 fields the
+app collects. `03_model_training.py` compares three models on a held-out test set, and
+`04_optimization.py` adds 5-fold cross-validation and SMOTE for class imbalance. The
+production model is the best by F1-score — **Random Forest (tuned)** — saved as
+`data/processed/best_model.joblib`. Held-out results (in `data/processed/results.json`):
+
+| Model | Accuracy | Precision | Recall | F1 |
+|-------|----------|-----------|--------|-----|
+| Logistic Regression | 70.8% | 60.0% | 50.0% | 0.55 |
+| SVM (tuned) | 74.0% | 65.2% | 55.6% | 0.60 |
+| **Random Forest (tuned)** ⭐ | **77.9%** | **71.7%** | **61.1%** | **0.66** |
+
+**What this means — and its limits**
+- This is **screening, not diagnosis**. A positive result means "worth confirming with a
+  clinician", not "you have diabetes".
+- **Recall ≈ 61%** means the model misses roughly 4 in 10 people who actually have diabetes
+  on this small, imbalanced dataset. The app compensates by also showing the rule-based
+  WHO/ADA thresholds and the FINDRISC score, so a user is never told "all clear" on the
+  model alone.
+- These numbers reflect the PIMA cohort (a specific population); real-world accuracy on a
+  different population will differ. Re-train on a local dataset before any clinical use.
+- The AI agents add explanation and next steps but do **not** change the verdict.
+
+---
+
+## Medical evidence & references
+
+The app's thresholds and guidance are grounded in these authoritative sources:
+
+**Clinical guidelines (diagnostic thresholds)**
+- World Health Organization. *Definition and diagnosis of diabetes mellitus and intermediate hyperglycaemia.* WHO/IDF consultation, 2006 (updated 2019/2025). https://www.who.int/publications/i/item/9789241594936
+- American Diabetes Association. *2. Classification and Diagnosis of Diabetes: Standards of Care in Diabetes—2024.* Diabetes Care 2024;47(Suppl 1):S20–S42. https://doi.org/10.2337/dc24-S002
+- International Expert Committee. *Report on the role of the A1C assay in the diagnosis of diabetes.* Diabetes Care 2009;32(7):1327–1334. (Establishes HbA1c ≥ 6.5% as diagnostic.)
+- International Diabetes Federation. *IDF Diabetes Atlas*, 10th ed. 2021. https://diabetesatlas.org/
+
+**Population & surveillance**
+- Centers for Disease Control and Prevention. *National Diabetes Statistics Report*, 2024. https://www.cdc.gov/diabetes/data/statistics-report/index.html
+- NIDDK (NIH). *Diabetes prevention, treatment and patient guidance.* https://www.niddk.nih.gov/health-information/diabetes
+
+**Risk score & dataset (the science behind this project)**
+- Lindström J, Tuomilehto J. *The diabetes risk score: a practical tool to predict type 2 diabetes risk.* Diabetes Care 2003;26(3):725–731. (FINDRISC — the lifestyle score used in `risk_questionnaire.py`.)
+- Smith JW, Everhart JE, Dickson WC, Knowler WC, Johannes R. *Using the ADAP learning algorithm to forecast the onset of diabetes mellitus.* Proc. Symp. Comput. Appl. Med. Care, 1988:261–265. (Source of the PIMA Indians Diabetes Database.)
+- UCI Machine Learning Repository. *Pima Indians Diabetes Database.* https://archive.ics.uci.edu/dataset/34/pima+indians+diabetes
+
+> The in-app **Web researcher** agent preferentially cites WHO, CDC, NIDDK, IDF and the
+> American Diabetes Association when it summarizes prevention guidance.
+
+---
+
 ## Project layout (AI-focused)
 
 ```
