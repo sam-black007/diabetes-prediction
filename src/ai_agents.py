@@ -73,7 +73,7 @@ _RESPONSE_CACHE_MAX = 256
 
 def _cache_key(system, messages, model):
     try:
-        payload = _json.dumps(
+        payload = json.dumps(
             [system, [[m.get("role"), m.get("content")] for m in messages]],
             ensure_ascii=False, sort_keys=True,
         ) + "|" + str(model)
@@ -221,6 +221,25 @@ def _extract_json(text):
     return None
 
 
+def _ask_json(prompt, system, temperature=0.0, client=None):
+    """One cached LLM call, returned as parsed JSON (or None when offline/unparseable)."""
+    client = client or AIClient()
+    if client.mode == "offline":
+        return None
+    return _extract_json(client.complete(prompt, system, temperature))
+
+
+def _to_floats(obj):
+    out = {}
+    for k, v in (obj or {}).items():
+        try:
+            if v is not None:
+                out[k] = float(v)
+        except Exception:
+            pass
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Agent 1: Conversational chat assistant
 # ---------------------------------------------------------------------------
@@ -246,7 +265,6 @@ INTAKE_FIELDS = [
 
 def extract_patient_fields(history, client=None):
     """Pull the 8 screening values from a free-text conversation as a dict."""
-    client = client or AIClient()
     convo = "\n".join(f"{m['role']}: {m['content']}" for m in history)
     prompt = (
         "From the conversation below, extract the patient's known medical values. "
@@ -259,19 +277,10 @@ def extract_patient_fields(history, client=None):
         + convo
     )
     system = "You are a data-extraction assistant. Respond with valid JSON only."
-    raw = client.complete(prompt, system, temperature=0.0)
-    data = _extract_json(raw)
+    data = _ask_json(prompt, system, 0.0, client)
     if not data:
         return {}
-    out = {}
-    for f in INTAKE_FIELDS:
-        v = data.get(f)
-        try:
-            if v is not None:
-                out[f] = float(v)
-        except Exception:
-            pass
-    return out
+    return {f: v for f, v in _to_floats(data).items() if f in INTAKE_FIELDS}
 
 
 REPORT_VALUE_KEYS = [
@@ -291,9 +300,6 @@ def validate_and_explain_report(regex_parsed, outcome, values, ocr_text=None, cl
     Returns (ai_values, corrections, explanation, next_steps) — a single network
     round-trip for the whole report conclusion.
     """
-    client = client or AIClient()
-    if client.mode == "offline":
-        return {}, [], "", []
     prompt = (
         "Below is the raw OCR text of a medical lab report, the values a regex parser "
         "extracted from it, the rule-based WHO/ADA conclusion, and the patient's final "
@@ -317,24 +323,15 @@ def validate_and_explain_report(regex_parsed, outcome, values, ocr_text=None, cl
     )
     system = ("You are a careful medical-data extraction and screening assistant. "
               "Respond with valid JSON only.")
-    raw = client.complete(prompt, system, temperature=0.2)
-    data = _extract_json(raw)
+    data = _ask_json(prompt, system, 0.2, client)
     if not data:
         return {}, [], "", []
-    vals = {}
-    for k, v in (data.get("values") or {}).items():
-        try:
-            if v is not None:
-                vals[k] = float(v)
-        except Exception:
-            pass
-    corrections = data.get("corrections") or []
-    if not isinstance(corrections, list):
-        corrections = []
+    vals = _to_floats(data.get("values"))
+    corr = data.get("corrections")
+    corrections = corr if isinstance(corr, list) else []
     explanation = str(data.get("explanation") or "")
-    next_steps = data.get("next_steps") or []
-    if not isinstance(next_steps, list):
-        next_steps = [str(t) for t in next_steps]
+    steps = data.get("next_steps")
+    next_steps = [str(t) for t in steps] if isinstance(steps, list) else []
     return vals, corrections, explanation, next_steps
 
 
@@ -345,7 +342,6 @@ def assess_diabetes_risk(values, client=None, context=None):
     "missing" names the important values that were unknown — the app asks
     the user for those instead of guessing.
     """
-    client = client or AIClient()
     ctx = f"\nContext: {context}" if context else ""
     prompt = (
         "You are a diabetes screening assistant. Decide whether this person likely "
@@ -363,8 +359,7 @@ def assess_diabetes_risk(values, client=None, context=None):
         "indicate prediabetes. This is screening, not a diagnosis."
     )
     system = "You are a careful medical screening assistant. Respond with valid JSON only."
-    raw = client.complete(prompt, system, temperature=0.1)
-    data = _extract_json(raw)
+    data = _ask_json(prompt, system, 0.1, client)
     if not data:
         return {}
     v = str(data.get("verdict", "")).lower()
@@ -388,7 +383,6 @@ def collect_missing_fields(answer_text, needed_list, client=None):
     needed_list contains keys like "age", "sex", "weight_kg", "height_cm",
     "hba1c". Returns a dict with only the successfully-parsed keys.
     """
-    client = client or AIClient()
     prompt = (
         "The patient was asked for some health details and replied in their own "
         "words. Extract ONLY these fields from the reply: "
@@ -398,8 +392,7 @@ def collect_missing_fields(answer_text, needed_list, client=None):
         f"Patient reply: {answer_text}"
     )
     system = "You are a data-extraction assistant. Respond with valid JSON only."
-    raw = client.complete(prompt, system, temperature=0.0)
-    data = _extract_json(raw)
+    data = _ask_json(prompt, system, 0.0, client)
     if not data:
         return {}
     out = {}
@@ -452,8 +445,7 @@ def suggest_missing_values(missing_fields, known_values, client=None):
 
     The app asks the user first; this is only used when they answer 'don't know'.
     """
-    client = client or AIClient()
-    if client.mode == "offline" or not missing_fields:
+    if not missing_fields:
         return {}
     fields = ", ".join(missing_fields)
     prompt = (
@@ -467,18 +459,10 @@ def suggest_missing_values(missing_fields, known_values, client=None):
         "5-20, glucose 90-140, HbA1c 5.0-5.7, DiabetesPedigreeFunction 0.2-0.6."
     )
     system = "You are a data-imputation assistant. Respond with valid JSON only."
-    raw = client.complete(prompt, system, temperature=0.2)
-    data = _extract_json(raw)
-    out = {}
-    if data:
-        for f in missing_fields:
-            v = data.get(f)
-            try:
-                if v is not None:
-                    out[f] = float(v)
-            except Exception:
-                pass
-    return out
+    data = _ask_json(prompt, system, 0.2, client)
+    if not data:
+        return {}
+    return {f: v for f, v in _to_floats(data).items() if f in missing_fields}
 
 
 LIFESTYLE_FIELDS = [
@@ -489,7 +473,6 @@ LIFESTYLE_FIELDS = [
 
 def extract_lifestyle(history, client=None):
     """Pull easy, self-known lifestyle inputs from a conversation as a dict."""
-    client = client or AIClient()
     convo = "\n".join(f"{m['role']}: {m['content']}" for m in history)
     prompt = (
         "From the conversation below, extract the patient's LIFESTYLE details (no lab tests). "
@@ -509,15 +492,10 @@ def extract_lifestyle(history, client=None):
         "Conversation:\n" + convo
     )
     system = "You are a data-extraction assistant. Respond with valid JSON only."
-    raw = client.complete(prompt, system, temperature=0.0)
-    data = _extract_json(raw)
+    data = _ask_json(prompt, system, 0.0, client)
     if not data:
         return {}
-    out = {}
-    for f in LIFESTYLE_FIELDS:
-        if f in data and data[f] is not None:
-            out[f] = data[f]
-    return out
+    return {f: data[f] for f in LIFESTYLE_FIELDS if f in data and data[f] is not None}
 
 
 
@@ -526,7 +504,6 @@ def extract_lifestyle(history, client=None):
 # Agent 2: Auto data enrichment (synthesize extra lifestyle context)
 # ---------------------------------------------------------------------------
 def enrich_patient_data(description, base_values=None, client=None):
-    client = client or AIClient()
     base_values = base_values or {}
     prompt = (
         "A user described a patient's lifestyle. Infer reasonable, NON-medical "
@@ -544,8 +521,7 @@ def enrich_patient_data(description, base_values=None, client=None):
         f"Lifestyle description: {description}"
     )
     system = "You are a clinical decision-support assistant. Respond with valid JSON only."
-    raw = client.complete(prompt, system, temperature=0.4)
-    data = _extract_json(raw)
+    data = _ask_json(prompt, system, 0.4, client)
     if data is None:
         return offline_enrich(description)
     data.setdefault("summary", "")

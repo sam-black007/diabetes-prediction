@@ -39,46 +39,6 @@ class _OfflineAIClient:
         return "The AI assistant is temporarily unavailable on this server."
 
 
-def _fb_chat_agent(messages, client=None, system=None):
-    return "The AI assistant is temporarily unavailable on this server."
-
-
-def _fb_enrich(description, base_values=None, client=None):
-    return {}
-
-
-def _fb_web(query, client=None):
-    return "Web research is temporarily unavailable."
-
-
-def _fb_extract_fields(history, client=None):
-    return {}
-
-
-def _fb_extract_lifestyle(history, client=None):
-    return {}
-
-
-def _fb_assess(values, client=None, context=None):
-    return {}
-
-
-def _fb_collect(answer_text, needed_list, client=None):
-    return {}
-
-
-def _fb_validate_explain(regex_parsed, outcome, values, client=None):
-    return {}, [], ""
-
-
-def _fb_suggest_next(values, outcome, *a, **k):
-    return []
-
-
-def _fb_suggest_missing(missing_fields, known_values, client=None):
-    return {}
-
-
 INTAKE_FIELDS = ["Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
                  "Insulin", "BMI", "DiabetesPedigreeFunction", "Age"]
 
@@ -91,16 +51,19 @@ def _bind(name, fallback):
 
 
 AIClient = _bind("AIClient", _OfflineAIClient)
-chat_agent = _bind("chat_agent", _fb_chat_agent)
-enrich_patient_data = _bind("enrich_patient_data", _fb_enrich)
-web_research_agent = _bind("web_research_agent", _fb_web)
-extract_patient_fields = _bind("extract_patient_fields", _fb_extract_fields)
-extract_lifestyle = _bind("extract_lifestyle", _fb_extract_lifestyle)
-assess_diabetes_risk = _bind("assess_diabetes_risk", _fb_assess)
-collect_missing_fields = _bind("collect_missing_fields", _fb_collect)
-validate_and_explain_report = _bind("validate_and_explain_report", _fb_validate_explain)
-suggest_next_steps = _bind("suggest_next_steps", _fb_suggest_next)
-suggest_missing_values = _bind("suggest_missing_values", _fb_suggest_missing)
+chat_agent = _bind("chat_agent",
+                   lambda *a, **k: "The AI assistant is temporarily unavailable on this server.")
+enrich_patient_data = _bind("enrich_patient_data", lambda *a, **k: {})
+web_research_agent = _bind("web_research_agent",
+                           lambda *a, **k: "Web research is temporarily unavailable.")
+extract_patient_fields = _bind("extract_patient_fields", lambda *a, **k: {})
+extract_lifestyle = _bind("extract_lifestyle", lambda *a, **k: {})
+assess_diabetes_risk = _bind("assess_diabetes_risk", lambda *a, **k: {})
+collect_missing_fields = _bind("collect_missing_fields", lambda *a, **k: {})
+validate_and_explain_report = _bind("validate_and_explain_report",
+                                    lambda *a, **k: ({}, [], "", []))
+suggest_next_steps = _bind("suggest_next_steps", lambda *a, **k: [])
+suggest_missing_values = _bind("suggest_missing_values", lambda *a, **k: {})
 if _ai_mod is not None:
     INTAKE_FIELDS = getattr(_ai_mod, "INTAKE_FIELDS", INTAKE_FIELDS)
 
