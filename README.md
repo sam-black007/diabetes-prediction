@@ -1,277 +1,155 @@
-# Diabetes Prediction — an AI helper that tells you your risk
+# Diabetes Risk Intelligence — AI Agent
 
 > 🚀 **Try it live:** [diabetes-prediction-v0.streamlit.app](https://diabetes-prediction-v0.streamlit.app)
-> No sign-up, no install — just open it.
-> Want to run your own copy? [Deploy from this repo](https://share.streamlit.io/deploy?repo=https://github.com/sam-black007/diabetes-prediction) (free Streamlit Cloud, one click).
 
-![Tests](https://github.com/sam-black007/diabetes-prediction/actions/workflows/test.yml/badge.svg)
+This project is powered by a **multi-agent AI layer** (`src/ai_agents.py`) that turns a
+diabetes-screening web app into a conversational, explainable assistant. The AI does the
+talking: it reads lab reports, asks follow-up questions, explains verdicts in plain language,
+and pulls the latest prevention guidance from authoritative health sources.
 
-This is a small, friendly web app that estimates **your risk of diabetes** from a few health numbers —
-or, if you don't have those numbers, from simple lifestyle questions. It's built with machine learning
-(trained on the classic **PIMA Indian Diabetes Dataset** of 768 patients) and a free AI assistant that
-explains the results in plain language.
-
-Think of it as an early-warning screen, not a doctor. It's here to help you notice risk early and
-decide whether it's worth talking to a professional.
+Everything below describes the **AI agent** — how it's built, what each agent does, how to
+configure it, and how we keep it fast.
 
 ---
 
-## What's inside
+## What the AI agent does
 
-Four tabs, each doing one job well:
+The agent is a collection of small, single-purpose functions, each calling a cloud LLM
+through one OpenAI-compatible client. No local model is required — it always works, even
+falling back to built-in offline rules if no API key is set.
 
-- **🩺 Medical Report** — snap a photo or drop in a PDF of a blood-test report. The app reads it
-  (OCR), pulls out the numbers, and gives you a risk result you can tweak and re-run.
-- **💬 Guided Intake** — don't have a report? A conversational assistant asks you questions. If you
-  *do* have recent test values, it collects them and predicts. If you *don't*, it gently switches to a
-  **no-blood-test lifestyle check** (the validated FINDRISC questionnaire) and estimates your 10-year risk.
-- **📊 Model Analytics** — the behind-the-scenes view: how the models compare, ROC curves, which
-  factors matter most, and a confusion matrix.
-- **🤖 AI Clinical Assistant** — chat with a free LLM (Qwen) about your result, ask "what does this
-  mean?", or let it pull fresh, practical prevention tips from the web.
-
-Everything runs in your browser; a trained model ships with the project, so it works the moment you open it.
+| Agent | Function | What it does |
+|-------|----------|--------------|
+| **Chat assistant** | `chat_agent` | Friendly Q&A about diabetes risk, the 8 screening features, and lifestyle. Reminds users it's not a doctor. |
+| **Report validator** | `validate_report_values` | Re-reads raw OCR text of a lab report and cross-checks the regex parser's numbers, listing any disagreements. |
+| **Field extractor** | `extract_patient_fields` | Pulls the 8 screening values from a free-text conversation as structured JSON. |
+| **Lifestyle extractor** | `extract_lifestyle` | Pulls self-known lifestyle details (age, sex, activity, diet…) from a chat. |
+| **Missing-field collector** | `collect_missing_fields` | Parses a free-text reply into exactly the values the app still needs. |
+| **Risk assessor** | `assess_diabetes_risk` | Returns a JSON verdict (diabetic / not), probability, reasoning, next steps, and which important values are still missing. |
+| **Verdict explainer** | `explain_verdict` | Writes the patient-friendly explanation for the rule-based WHO/ADA conclusion. The AI explains; it never changes the verdict. |
+| **Data enricher** | `enrich_patient_data` | Infers non-clinical lifestyle context (activity, diet, sleep, stress, tips) from a description. |
+| **Web researcher** | `web_research_agent` | Summarizes the latest diabetes guidance, preferring WHO / CDC / NIDDK / IDF / ADA sources. |
 
 ---
 
-## Run it on your own computer
+## How it works
 
-### 1. Install Python (skip if you already have it)
-Download from [python.org](https://www.python.org/downloads/) (3.10 or newer). **Tick "Add Python to PATH"**
-during install — that step saves you pain later. Check it worked:
+A single `AIClient` wraps an OpenAI-compatible client. It auto-detects the provider from the
+API key prefix, so you only set credentials — no code changes:
+
+- `sk-or-…` → **OpenRouter** (many models, `:free` models cost nothing)
+- `AIza…` / `AQ.…` → **Google Gemini** (free tier, fast)
+- `sk-ws-…` → **Alibaba MaaS workspace** (custom endpoint)
+- Otherwise → uses `AI_PROVIDER` to pick a preset (`deepseek`, `qwen`, `kimi`, `siliconflow`, `openai`)
+
+Built-in presets (in `PROVIDER_PRESETS`):
+
+| Provider | Default model | Base URL |
+|----------|---------------|----------|
+| `openrouter` | `nvidia/nemotron-3-nano-30b-a3b:free` | `https://openrouter.ai/api/v1` |
+| `google` / `gemini` | `gemini-3.6-flash` | `https://generativelanguage.googleapis.com/v1beta/openai/` |
+| `deepseek` | `deepseek-chat` | `https://api.deepseek.com` |
+| `qwen` | `qwen-turbo` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `kimi` | `moonshot-v1-8k` | `https://api.moonshot.cn/v1` |
+| `siliconflow` | `deepseek-ai/DeepSeek-V3` | `https://api.siliconflow.cn/v1` |
+| `openai` | `gpt-4o-mini` | (official) |
+
+All providers are OpenAI-compatible, so the agent just points the client at the right `base_url`.
+
+---
+
+## Configuration
+
+Set these in `.env` (or Streamlit Cloud → **Secrets**). Only `AI_API_KEY` is required.
 
 ```bash
-python --version
-# you should see something like: Python 3.11.9
+# Which provider preset to use (google | deepseek | qwen | kimi | siliconflow | openai)
+AI_PROVIDER=qwen
+
+# Your API key for that provider (OPENAI_API_KEY also accepted)
+AI_API_KEY=sk-...
+
+# Optional: override the model name
+AI_MODEL=qwen-turbo
+
+# Optional: override the base URL (needed for custom endpoints like Alibaba MaaS)
+AI_BASE_URL=https://ws-....maas.aliyuncs.com/compatible-mode/v1
 ```
 
-### 2. Get the project
-```bash
-git clone https://github.com/sam-black007/diabetes-prediction
-cd diabetes-prediction
-```
-No Git? Click **Code → Download ZIP** on the repo page, unzip, and open a terminal in that folder.
+If no key is present, the app runs in **offline mode** using built-in rule-based responses,
+so it never breaks.
 
-### 3. Install the libraries
+---
+
+## Performance — keeping responses under ~5 seconds
+
+Slow AI responses are the #1 usability problem, so the agent is tuned for speed:
+
+1. **Fast model by default** — ships on `qwen-turbo` (or `gemini-3.6-flash` for Google),
+   not the heavier `qwen-plus`, to cut per-call latency.
+2. **Capped output** — every completion is limited to `_MAX_TOKENS` (700) so the model
+   stops generating early instead of rambling.
+3. **Response cache** — identical prompts (common when Streamlit re-runs the script on every
+   widget interaction) are served from an in-memory cache, skipping the network call entirely.
+4. **Fail-fast timeouts** — the client uses `timeout=45` and `max_retries=1` instead of the
+   SDK defaults (~600s), so a stalled endpoint fails quickly rather than hanging the UI.
+5. **Short backoff** — on rate-limit it waits 3s / 6s (was 8s / 16s) before retrying.
+
+Each interaction is one or two LLM calls, so with a fast model + caching the typical reply
+lands well under 5 seconds.
+
+---
+
+## Offline fallbacks
+
+If the AI service is unavailable, rate-limited, or unconfigured, every agent degrades
+gracefully:
+
+- `offline_chat()` — general diabetes Q&A guidance.
+- `offline_enrich()` — heuristic lifestyle enrichment (activity / diet / smoking / tips).
+- The risk verdict falls back to **WHO/ADA threshold rules** (fasting ≥126, after-meal ≥200,
+  HbA1c ≥6.5% → diabetes range).
+
+The app always works — the AI just makes it smarter.
+
+---
+
+## Project layout (AI-focused)
+
+```
+src/
+  ai_agents.py          the AI agent layer (all agents + AIClient + offline fallbacks)
+  report_parser.py      reads lab-report PDFs / images (OCR text fed to the AI)
+  risk_questionnaire.py FINDRISC lifestyle risk score
+app.py                  Streamlit app that wires the agents into the UI
+tests/
+  test_project.py       automated sanity checks
+requirements.txt
+```
+
+---
+
+## Run it
+
 ```bash
 pip install -r requirements.txt
-```
-You'll see a flurry of "Downloading / Successfully installed" lines. This pulls in
-Pandas, NumPy, Scikit-Learn, Matplotlib, Seaborn, and Streamlit.
-
-### 4. Launch the app
-```bash
 python -m streamlit run app.py
 ```
-(On Windows, if `python` isn't found, try `py -m streamlit run app.py`.) It opens
-**http://localhost:8501** automatically. Stop it anytime with `Ctrl + C`.
+
+Open **http://localhost:8501**. The app shows the AI status (online provider or offline)
+and never blocks on a missing key.
 
 ---
 
-## How it was built (the short version)
+## Safety
 
-```mermaid
-flowchart TD
-    A["PIMA Indian Diabetes Dataset<br/>(768 patients, 8 features)"] --> B["Preprocessing<br/>fix impossible 0s, normalize"]
-    B --> C["Train / Test split<br/>80% train | 20% test"]
-    C --> D["EDA<br/>histograms, heatmap, boxplots"]
-    C --> E["Train models<br/>Logistic Regression, SVM, Random Forest"]
-    E --> F["Hyperparameter tuning<br/>GridSearchCV"]
-    F --> G["Evaluate<br/>accuracy, precision, recall, F1"]
-    G --> H{"Which model is best?"}
-    H -->|"by F1-score"| I["Random Forest wins (78% accuracy)"]
-    I --> J["Optimization<br/>class weights + wider tuning + ROC-AUC"]
-    J --> K["Decision-threshold tuning<br/>recall 63% -> 81%"]
-    K --> L["Save best model + threshold"]
-    L --> M["Web app<br/>python -m streamlit run app.py"]
-    M --> N["Live prediction for any patient"]
-```
-
-If you want to run the whole pipeline yourself — raw data to live app — do it in this order:
-
-```bash
-python src/01_preprocessing.py   # 1. clean + normalize + split
-python src/02_eda.py             # 2. generate the charts
-python src/03_model_training.py  # 3. train + tune + compare models
-python src/04_optimization.py    # 4. optimize + save the best model
-python -m streamlit run app.py   # 5. open the web app
-```
-
-What each step does:
-1. **`01_preprocessing.py`** — loads the raw data, fixes impossible `0` values (a person can't have
-   0 glucose or 0 BMI — those are really "missing"), normalizes the features, and splits 80/20.
-2. **`02_eda.py`** — draws the charts and saves them to `plots/`.
-3. **`03_model_training.py`** — trains and tunes Logistic Regression, SVM, and Random Forest, then
-   saves the best one as `best_model.joblib`.
-4. **`04_optimization.py`** — handles the class imbalance, tries more models, tunes the decision
-   threshold, and saves the final model + `model_threshold.json`.
-5. **`app.py`** — the web app, using that saved model.
-
-**Want a sanity check?** Run `python tests/test_project.py` afterwards — it runs a set of automated
-checks (files present, data splits correct, model beats the baseline) and tells you if anything's off.
-
----
-
-## The results, in plain English
-
-We started with three models. Random Forest was best at first (~78% accurate). But the dataset is
-**unbalanced** — far more non-diabetic patients than diabetic — so a model can look "accurate" while
-missing the people who actually have diabetes. To fix that we optimized for *recall* (catching real
-cases) and tuned the decision threshold.
-
-**Before optimization:**
-
-| Model | Accuracy | Precision | Recall | F1-Score |
-|-------|----------|-----------|--------|----------|
-| Logistic Regression | 0.708 | 0.600 | 0.500 | 0.546 |
-| SVM (tuned) | 0.740 | 0.652 | 0.556 | 0.600 |
-| Random Forest (tuned) | 0.779 | 0.717 | 0.611 | 0.660 |
-
-**After optimization:**
-
-| Model | Accuracy | Recall | F1-Score | ROC-AUC |
-|-------|----------|--------|----------|---------|
-| Random Forest (tuned + balanced) | 0.773 | 0.704 | 0.685 | 0.834 |
-| Random Forest + threshold tuning | 0.760 | 0.722 | 0.678 | 0.834 |
-| XGBoost + threshold tuning | 0.734 | 0.852 | 0.692 | 0.831 |
-| XGBoost + SMOTE + threshold tuning | 0.734 | 0.833 | 0.687 | 0.827 |
-| Stacking ensemble + threshold tuning | 0.747 | 0.796 | 0.688 | 0.823 |
-| **Gradient Boosting + threshold tuning** | **0.766** | **0.815** | **0.710** | **0.823** |
-
-In the end **Gradient Boosting** won, with a tuned threshold of **0.31**. The big win: it now catches
-**81% of diabetic patients**, up from 63% — meaning far fewer real cases slip through. (PIMA tops out
-around 78% accuracy, so the next leap would need a bigger, richer dataset.)
-
-## How accurate is it, really?
-
-These aren't estimates — they're computed by running the final model on the **154-patient test set**
-(54 of them actually diabetic) at our threshold of 0.31:
-
-| Metric | Score | What it means |
-|--------|-------|---------------|
-| Accuracy | 76.6% | overall correct calls |
-| Sensitivity (recall) | 81.5% | of people who truly have diabetes, we caught 81.5% |
-| Specificity | 74.0% | of people who *don't*, we correctly cleared 74% |
-| Precision (PPV) | 62.9% | when we say "diabetes likely", ~63% truly have it |
-| NPV | 88.1% | when we say "no diabetes", ~88% truly don't |
-| ROC-AUC | 0.823 | overall separation skill (0.5 = random) |
-
-Confusion matrix: **44 true positives, 10 missed, 26 false alarms, 74 true negatives.**
-
-Read it the way a clinician would: this is a **screening** tool, not a diagnosis. It's deliberately
-tuned to catch as many real cases as possible (high sensitivity), which means it will occasionally flag
-someone who turns out fine (lower specificity). That is exactly the trade-off the **WHO** and **IDF**
-accept for population screening — a positive result is meant to trigger a proper confirmatory test
-(fasting glucose / HbA1c), not replace one.
-
-For perspective, the validated **FINDRISC** questionnaire — the same one our no-lab flow uses — reports
-an AUC of ~0.85 for 10-year type 2 diabetes risk in published studies. Our model's ROC-AUC of **0.82**
-sits in that same screening-instrument range, which is reassuring: the signal the data learns is
-consistent with established medical risk scoring.
-
-> ⚠️ These scores are on the historical PIMA set, which is small and demographic-specific. Real-world
-> accuracy on a different population will vary, so always confirm with a professional.
-
----
-
-## Charts
-
-**How the models compare**
-
-![Model comparison](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/5_model_comparison.png)
-
-**Confusion matrix (tuned Random Forest)**
-
-![Random Forest confusion matrix](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/cm_random_forest_%28tuned%29.png)
-
-**Correlation between features**
-
-![Correlation heatmap](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/3_correlation_heatmap.png)
-
-**ROC curves of the optimized models**
-
-![ROC curves](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/6_roc_curves.png)
-
-**What drives the prediction (feature importance)**
-
-![Feature importance](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/7_feature_importance.png)
-
-**Glucose vs BMI**
-
-![Glucose vs BMI](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/5_glucose_vs_bmi.png)
-
-**Diabetes rate by age group**
-
-![Diabetes rate by age](https://raw.githubusercontent.com/sam-black007/diabetes-prediction/main/plots/6_diabetes_rate_by_age.png)
-
----
-
-## Project structure
-
-```
-data/
-  diabetes.csv              raw dataset
-  sample_report.pdf         example lab report (try it in the Medical Report tab)
-  sample_report.png         example report photo
-  sample_patients.csv       example spreadsheet (legacy sample data)
-  processed/                cleaned data, train/test sets, trained model + threshold
-plots/                      all the charts
-src/
-  01_preprocessing.py       clean + normalize + split
-  02_eda.py                 charts
-  03_model_training.py      train + compare the 3 models
-  04_optimization.py        optimize and save the final model
-  report_parser.py          reads lab report PDFs / images
-  ai_agents.py              AI assistant (chat, enrichment, web research)
-  risk_questionnaire.py     FINDRISC lifestyle risk score
-app.py                      the web app
-tests/
-  test_project.py           automated sanity checks
-requirements.txt
-README.md
-```
-
----
-
-## A note on accuracy & safety
-
-This tool is for **screening and education only** — it is **not a medical diagnosis**. The model is
-trained on a limited historical dataset, so results can be wrong, especially for groups underrepresented
-in that data. If a result worries you, or you have symptoms, please see a qualified clinician. The AI
-chat replies are general guidance, not personalized medical advice.
-
----
-
-## Backed by the world's health authorities
-
-Our model is trained on the PIMA dataset, but the **risk factors it learns line up with what the
-leading health bodies say drives type 2 diabetes**. The app also uses the standard diagnostic glucose
-cut-offs and the FINDRISC questionnaire — a validated tool used in WHO/IDF prevention programmes.
-
-Where our approach matches the official guidance:
-- **Glucose thresholds** — we flag diabetes at an after-meal glucose **≥ 200 mg/dL**, matching the
-  WHO/ADA criterion of 2-hour post-load glucose ≥ 11.1 mmol/L (200 mg/dL); fasting ≥ 126 mg/dL is the
-  equivalent fasting standard.
-- **Key risk factors** — glucose, BMI, age, blood pressure, and family history are exactly the factors
-  WHO, CDC, and the IDF call out.
-- **Lifestyle screening** — the no-blood-test flow uses **FINDRISC**, the validated Finnish
-  questionnaire adopted by IDF/WHO prevention programmes.
-
-Authoritative sources we cite and learn from:
-- **World Health Organization (WHO)** — [Diabetes fact sheet](https://www.who.int/news-room/fact-sheets/detail/diabetes) · [Diabetes health topic](https://www.who.int/health-topics/diabetes)
-- **US CDC** — [Diabetes](https://www.cdc.gov/diabetes/)
-- **US NIH / NIDDK** — [Diabetes health information](https://www.niddk.nih.gov/health-information/diabetes)
-- **International Diabetes Federation (IDF)** — [idf.org](https://idf.org/) · [Diabetes Atlas](https://diabetesatlas.org/)
-- **American Diabetes Association** — [diabetes.org](https://diabetes.org/)
-- **Mayo Clinic** — [Diabetes overview](https://www.mayoclinic.org/diseases-conditions/diabetes/symptoms-causes/syc-20371444)
-- **UK NHS** — [Diabetes](https://www.nhs.uk/conditions/diabetes/)
-
-The in-app **AI Clinical Assistant** now searches these organizations first and cites them in its
-answers, so the advice you get is grounded in the latest official guidance rather than guesswork.
+The AI agent provides **screening and education only — not a medical diagnosis**. Its chat
+replies are general guidance, not personalized medical advice. A positive result should
+always be confirmed with a clinician via a fasting glucose / HbA1c test per WHO & IDF guidance.
 
 ---
 
 ## License
 
-Released under the **MIT License** — free for anyone to use, modify, and share.
-See [LICENSE](LICENSE). Built openly so anyone can learn from it or run their own version.
+Released under the **MIT License** — free to use, modify, and share.
+See [LICENSE](LICENSE).

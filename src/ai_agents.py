@@ -2,6 +2,7 @@ import os
 import json
 import re
 import time
+import hashlib
 import requests
 
 try:
@@ -113,7 +114,14 @@ class AIClient:
                 base_url = BASE_URL
                 self.mode = PROVIDER
             if base_url:
-                self._client = OpenAI(api_key=API_KEY, base_url=base_url)
+                # Cap the client timeout/retries so a stalled endpoint fails fast
+                # (default is ~600s + 2 retries, which makes the UI hang for minutes).
+                self._client = OpenAI(
+                    api_key=API_KEY,
+                    base_url=base_url,
+                    timeout=45,
+                    max_retries=1,
+                )
                 trunc = f" [key looks truncated, len={len(API_KEY)}]" if len(API_KEY) < 40 else ""
                 self.status_detail = f"connected to {base_url}{trunc}"
             else:
@@ -123,38 +131,68 @@ class AIClient:
             self.mode = "offline"
             self.status_detail = f"client init failed: {type(e).__name__}: {e}"
 
-    def chat(self, messages, system="You are a helpful medical assistant.", temperature=0.3):
-        if self._client is not None:
-            last_err = None
-            for attempt in range(3):
-                try:
-                    resp = self._client.chat.completions.create(
-                        model=self._model,
-                        messages=[{"role": "system", "content": system}] + messages,
-                        temperature=temperature,
-                    )
-                    return resp.choices[0].message.content
-                except Exception as e:
-                    last_err = e
-                    transient = ("429" in str(e) or "RateLimit" in type(e).__name__
-                                 or "quota" in str(e).lower())
-                    if transient and attempt < 2:
-                        time.sleep(8 * (attempt + 1))
-                        continue
-                    break
-            e = last_err
-            if "429" in str(e) or "RateLimit" in type(e).__name__:
-                print(f"[AIClient] {PROVIDER} rate-limited: {e}")
-                return ("⏳ The free AI tier is busy right now — please wait about a "
-                        "minute and try again.\n\n" + offline_chat(messages))
-            print(f"[AIClient] {PROVIDER} error: {e}")
-            return (
-                f"⚠️ The AI service returned an error ({type(e).__name__}). If it's "
-                f"401/403, your API key or endpoint is wrong; if it's a connection error, "
-                f"the host is blocked. Falling back to general guidance.\n\n"
-                + offline_chat(messages)
-            )
-        return offline_chat(messages)
+# Cap generated tokens so the model stops early — shorter answers = faster
+# responses (the main lever for staying under ~5s per call).
+_MAX_TOKENS = 700
+# In-memory cache so identical prompts (e.g. Streamlit script reruns) don't
+# trigger a fresh, slow network call.
+_RESPONSE_CACHE = {}
+_RESPONSE_CACHE_MAX = 256
+
+
+def _cache_key(system, messages, model):
+    try:
+        payload = _json.dumps(
+            [system, [[m.get("role"), m.get("content")] for m in messages]],
+            ensure_ascii=False, sort_keys=True,
+        ) + "|" + str(model)
+    except Exception:
+        return None
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()
+
+
+def chat(self, messages, system="You are a helpful medical assistant.",
+         temperature=0.3, use_cache=True):
+    if self._client is not None:
+        key = _cache_key(system, messages, self._model) if use_cache else None
+        if key is not None and key in _RESPONSE_CACHE:
+            return _RESPONSE_CACHE[key]
+        last_err = None
+        for attempt in range(3):
+            try:
+                resp = self._client.chat.completions.create(
+                    model=self._model,
+                    messages=[{"role": "system", "content": system}] + messages,
+                    temperature=temperature,
+                    max_tokens=_MAX_TOKENS,
+                )
+                out = resp.choices[0].message.content
+                if key is not None:
+                    if len(_RESPONSE_CACHE) >= _RESPONSE_CACHE_MAX:
+                        _RESPONSE_CACHE.clear()
+                    _RESPONSE_CACHE[key] = out
+                return out
+            except Exception as e:
+                last_err = e
+                transient = ("429" in str(e) or "RateLimit" in type(e).__name__
+                             or "quota" in str(e).lower())
+                if transient and attempt < 2:
+                    time.sleep(3 * (attempt + 1))
+                    continue
+                break
+        e = last_err
+        if "429" in str(e) or "RateLimit" in type(e).__name__:
+            print(f"[AIClient] {PROVIDER} rate-limited: {e}")
+            return ("⏳ The free AI tier is busy right now — please wait about a "
+                    "minute and try again.\n\n" + offline_chat(messages))
+        print(f"[AIClient] {PROVIDER} error: {e}")
+        return (
+            f"⚠️ The AI service returned an error ({type(e).__name__}). If it's "
+            f"401/403, your API key or endpoint is wrong; if it's a connection error, "
+            f"the host is blocked. Falling back to general guidance.\n\n"
+            + offline_chat(messages)
+        )
+    return offline_chat(messages)
 
     def complete(self, prompt, system="You are a helpful medical assistant.", temperature=0.3):
         return self.chat([{"role": "user", "content": prompt}], system, temperature)
