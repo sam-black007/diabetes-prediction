@@ -64,6 +64,16 @@ validate_and_explain_report = _bind("validate_and_explain_report",
                                     lambda *a, **k: ({}, [], "", []))
 suggest_next_steps = _bind("suggest_next_steps", lambda *a, **k: [])
 suggest_missing_values = _bind("suggest_missing_values", lambda *a, **k: {})
+screen_quick_glucose = _bind(
+    "screen_quick_glucose",
+    lambda *a, **k: ("Inconclusive", "", [], ["age", "sex", "weight_kg",
+                                              "fasting_glucose", "post_glucose"]),
+)
+_QC_LABELS = {
+    "age": "Age", "sex": "Sex", "weight_kg": "Weight (kg)",
+    "fasting_glucose": "Fasting glucose (before meal)",
+    "post_glucose": "Post-meal glucose (2h after)",
+}
 if _ai_mod is not None:
     INTAKE_FIELDS = getattr(_ai_mod, "INTAKE_FIELDS", INTAKE_FIELDS)
 
@@ -753,7 +763,8 @@ def main():
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3 = st.tabs(["Medical Report", "Guided Intake", "AI Clinical Assistant"])
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["Medical Report", "Guided Intake", "Quick Glucose Check", "AI Clinical Assistant"])
 
     # ---------------- Tab 1: Medical Report (primary) ----------------
     with tab1:
@@ -1186,6 +1197,68 @@ def main():
 
     # ---------------- Tab 3: AI Clinical Assistant ----------------
     with tab3:
+        st.subheader("Quick glucose check (no BMI needed)")
+        st.write("Answer 5 easy questions — age, sex, weight, and your blood sugar "
+                 "**before** and **after** a meal. This screen uses WHO/ADA glucose "
+                 "thresholds and does NOT require BMI or a lab report.")
+        c1, c2 = st.columns(2)
+        with c1:
+            q_age = st.number_input("Age (years)", min_value=1, max_value=120, value=None,
+                                    step=1, key="qc_age")
+            q_sex = st.radio("Sex", ["male", "female"], horizontal=True, key="qc_sex")
+        with c2:
+            q_weight = st.number_input("Weight (kg)", min_value=2.0, max_value=400.0, value=None,
+                                       step=0.5, key="qc_weight")
+            q_fast = st.number_input("Fasting glucose (before meal, mg/dL)", min_value=20,
+                                     max_value=600, value=None, step=1, key="qc_fast")
+            q_post = st.number_input("Post-meal glucose (2h after, mg/dL)", min_value=20,
+                                     max_value=600, value=None, step=1, key="qc_post")
+
+        if st.button("Check my risk", key="qc_run"):
+            age = q_age if q_age else None
+            sex = q_sex
+            weight = q_weight if q_weight else None
+            fast = q_fast if q_fast else None
+            post = q_post if q_post else None
+            state, explain, steps, missing = screen_quick_glucose(
+                age, sex, weight, fast, post, client=ai)
+            if missing:
+                st.warning("To check your risk I need these details: "
+                           + ", ".join(_QC_LABELS.get(m, m) for m in missing)
+                           + ". Please fill them in above.")
+                if ai.mode != "offline":
+                    ask = chat_agent([{"role": "user", "content":
+                        f"The user did a quick diabetes screen but left out: "
+                        f"{', '.join(_QC_LABELS.get(m, m) for m in missing)}. "
+                        f"Politely ask them to provide those values (age, sex, weight, "
+                        f"fasting glucose, post-meal glucose). Keep it to 2 sentences."}],
+                        client=ai)
+                    st.info(ask)
+            else:
+                color = {"Diabetic range": "#C0392B", "Prediabetic range": "#E67E22",
+                         "Normal range": "#27AE60"}.get(state, "#0E7C86")
+                st.markdown(f"#### Result: <span style='color:{color}'>{state}</span>",
+                            unsafe_allow_html=True)
+                if explain:
+                    st.write(explain)
+                if steps:
+                    st.markdown("**Personalized next steps**")
+                    for s in steps:
+                        st.write(f"- {s}")
+                st.caption("Screening only — not a diagnosis. Confirm with a clinician via "
+                           "fasting glucose / HbA1c test.")
+
+        st.markdown("---")
+        st.markdown("**For a more accurate result, also consider:**")
+        st.markdown(
+            "- **HbA1c test** — ≥6.5% indicates diabetes, 5.7–6.4% prediabetes (no fasting needed).\n"
+            "- **Oral glucose tolerance test (OGTT)** — 2-hour blood sugar is the most sensitive check.\n"
+            "- **Repeat fasting glucose** on two separate mornings.\n"
+            "- **Upload your lab report** (Medical Report tab) — OCR reads exact values, more reliable than memory.\n"
+            "- Add **blood pressure** and **family history** — they sharpen risk further."
+        )
+
+    with tab4:
         st.subheader("AI Clinical Assistant")
         provider = ai.mode if ai.mode != "offline" else "Offline fallback"
         if ai.mode == "offline":

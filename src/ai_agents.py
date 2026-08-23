@@ -465,6 +465,39 @@ def suggest_missing_values(missing_fields, known_values, client=None):
     return {f: v for f, v in _to_floats(data).items() if f in missing_fields}
 
 
+def screen_quick_glucose(age=None, sex=None, weight_kg=None, fasting_glucose=None,
+                         post_glucose=None, client=None):
+    """Quick risk screen from 5 easy self-known inputs (BMI NOT required):
+    age, sex, weight (kg), fasting (before-meal) glucose and post-meal glucose (mg/dL).
+    Returns (state, explanation, next_steps, missing).
+    """
+    fields = {"age": age, "sex": sex, "weight_kg": weight_kg,
+              "fasting_glucose": fasting_glucose, "post_glucose": post_glucose}
+    missing = [k for k, v in fields.items()
+               if v is None or (isinstance(v, str) and str(v).strip() == "")]
+    diabetic = (fasting_glucose is not None and fasting_glucose >= 126) or \
+               (post_glucose is not None and post_glucose >= 200)
+    prediab = (fasting_glucose is not None and 100 <= fasting_glucose <= 125) or \
+              (post_glucose is not None and 140 <= post_glucose <= 199)
+    state = "Diabetic range" if diabetic else ("Prediabetic range" if prediab else "Normal range")
+    prompt = (
+        "A person did a quick diabetes screen with these self-known values "
+        f"(BMI was NOT used): age={age}, sex={sex}, weight_kg={weight_kg}, "
+        f"fasting_glucose_mg_dl={fasting_glucose}, post_meal_glucose_mg_dl={post_glucose}.\n"
+        f"Rule-based WHO/ADA glucose conclusion: {state}.\n\n"
+        "Return ONLY valid JSON with two keys: 'explanation' (2-4 warm, plain sentences using "
+        "the actual numbers, noting this is screening not a diagnosis) and 'next_steps' (3-5 short "
+        "personalized tips). If glucose is in a warning range, suggest confirmatory HbA1c / OGTT "
+        "lab tests; if weight looks high for the age, mention weight management."
+    )
+    system = "You are a careful medical screening assistant. Respond with valid JSON only."
+    data = _ask_json(prompt, system, 0.2, client)
+    explanation = str(data.get("explanation") or "") if data else ""
+    steps = data.get("next_steps") if data else None
+    next_steps = [str(t) for t in steps] if isinstance(steps, list) else []
+    return state, explanation, next_steps, missing
+
+
 LIFESTYLE_FIELDS = [
     "age", "sex", "height_cm", "weight_kg", "waist_cm",
     "activity_high", "veg_daily", "bp_issue", "high_sugar_history", "family_history",

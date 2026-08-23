@@ -30,6 +30,7 @@ falling back to built-in offline rules if no API key is set.
 | **Web researcher** | `web_research_agent` | Summarizes the latest diabetes guidance, preferring WHO / CDC / NIDDK / IDF / ADA sources. |
 | **Next-step advisor** | `suggest_next_steps` | After a result, returns personalized, value-driven next-step tips (one cached call). |
 | **Missing-value suggester** | `suggest_missing_values` | When a user doesn't know a value, the AI proposes a plausible typical value so the screening isn't left blank. |
+| **Quick glucose screen** | `screen_quick_glucose` | From age, sex, weight, fasting + post-meal glucose (**no BMI needed**): a WHO/ADA verdict, asks for any missing inputs, and points to HbA1c / OGTT for a more accurate check. |
 
 ---
 
