@@ -79,6 +79,14 @@ def _fb_validate_explain(regex_parsed, outcome, values, client=None):
     return {}, [], ""
 
 
+def _fb_suggest_next(values, outcome, *a, **k):
+    return []
+
+
+def _fb_suggest_missing(missing_fields, known_values, client=None):
+    return {}
+
+
 INTAKE_FIELDS = ["Pregnancies", "Glucose", "BloodPressure", "SkinThickness",
                  "Insulin", "BMI", "DiabetesPedigreeFunction", "Age"]
 
@@ -101,6 +109,8 @@ assess_diabetes_risk = _bind("assess_diabetes_risk", _fb_assess)
 collect_missing_fields = _bind("collect_missing_fields", _fb_collect)
 explain_verdict = _bind("explain_verdict", _fb_explain)
 validate_and_explain_report = _bind("validate_and_explain_report", _fb_validate_explain)
+suggest_next_steps = _bind("suggest_next_steps", _fb_suggest_next)
+suggest_missing_values = _bind("suggest_missing_values", _fb_suggest_missing)
 if _ai_mod is not None:
     INTAKE_FIELDS = getattr(_ai_mod, "INTAKE_FIELDS", INTAKE_FIELDS)
 
@@ -871,6 +881,21 @@ def main():
 
                 has_bmi = bool(parsed.get("bmi") or ai_vals.get("bmi"))
                 sex_rep = parsed.get("sex")
+
+                def _known_ctx():
+                    """Values the AI already knows, to ground missing-value suggestions."""
+                    ctx = {}
+                    for rk, fk in [("rep_age", "age"), ("rep_fasting", "fasting"),
+                                   ("rep_postmeal", "postmeal"), ("rep_hba1c", "hba1c")]:
+                        if _known(rk):
+                            ctx[fk] = st.session_state[rk]
+                    if sex_rep:
+                        ctx["sex"] = sex_rep
+                    for f in ("age", "sex", "height", "weight", "hba1c", "postmeal"):
+                        av = st.session_state.get("_ans_" + f)
+                        if av not in (None, "", 0):
+                            ctx[f] = float(av) if isinstance(av, (int, float)) else av
+                    return ctx
                 fasting_v = st.session_state["rep_fasting"] if _known("rep_fasting") else None
                 postmeal_v = st.session_state["rep_postmeal"] if _known("rep_postmeal") else None
                 hba1c_v = st.session_state["rep_hba1c"] if _known("rep_hba1c") else None
@@ -900,6 +925,23 @@ def main():
                                 ) or {}
                             except Exception:
                                 got = {}
+                            # If the user clearly doesn't know, let the AI suggest
+                            # a typical value instead of leaving the slot blank.
+                            low = chat_reply.lower()
+                            if not got and any(w in low for w in
+                                               ["don't know", "dont know", "unknown",
+                                                "not sure", "idk", "no idea", "skip"]):
+                                try:
+                                    sug = suggest_missing_values(
+                                        [fid for fid, _q in missing_items],
+                                        _known_ctx(), ai
+                                    ) or {}
+                                except Exception:
+                                    sug = {}
+                                got = sug
+                                if sug:
+                                    st.info("You weren't sure, so the AI suggested typical "
+                                            "estimates for the blanks — review them below.")
                         for k, v in got.items():
                             st.session_state["_ans_" + k] = v
 
@@ -907,8 +949,13 @@ def main():
                 still_open = [f for f, _q in missing_items
                               if st.session_state.get("_ans_" + f) in (None, "", 0)]
                 if still_open:
-                    st.markdown("#### A few things the agent needs from you")
+                    st.markdown("#### 🤖 The assistant needs a few more details")
+                    st.caption("Answer in your own words above, or fill the quick fields "
+                               "below. If you're unsure about any of them, tap the button "
+                               "and the AI will suggest a typical value for you.")
                     for fid, q in missing_items:
+                        if fid not in still_open:
+                            continue
                         if fid == "sex":
                             st.radio(q, ["male", "female"], horizontal=True, key="_ans_sex")
                         elif fid == "age":
@@ -921,6 +968,20 @@ def main():
                             st.number_input(q, 0.0, 20.0, step=0.1, key="_ans_hba1c")
                         elif fid == "postmeal":
                             st.number_input(q, 0.0, 600.0, key="_ans_postmeal")
+                    if st.button("✨ I don't know these — let the AI suggest",
+                                 key="_ai_suggest_missing"):
+                        with st.spinner("AI is suggesting typical values..."):
+                            try:
+                                sug = suggest_missing_values(
+                                    still_open, _known_ctx(), ai
+                                ) or {}
+                            except Exception:
+                                sug = {}
+                        for f, v in sug.items():
+                            st.session_state["_ans_" + f] = v
+                        if sug:
+                            st.success("AI added typical estimates for the blanks — "
+                                       "review or change them if you can.")
 
                 def _val(fid):
                     v = st.session_state.get("_ans_" + fid)
@@ -978,7 +1039,8 @@ def main():
                                         {"age": age_eff, "sex": sex_eff, "bmi": bmi_val,
                                          "fasting_glucose_mg_dl": eff_fast,
                                          "after_meal_glucose_mg_dl": eff_pp,
-                                         "hba1c_pct": eff_a1c}, ai)
+                                         "hba1c_pct": eff_a1c},
+                                        ocr_text=text, client=ai)
                                 except Exception:
                                     comb = ({}, [], "")
                             st.session_state["_rep_comb"] = (comb_key, comb)
@@ -991,6 +1053,24 @@ def main():
                         if expl:
                             st.markdown("#### AI agent explanation")
                             st.write(expl)
+                        # Personalized AI next-step suggestions (one cached call).
+                        sugg_key = "sugg_" + comb_key
+                        sugg = st.session_state.get(sugg_key)
+                        if sugg is None:
+                            with st.spinner("AI is preparing your personalized tips..."):
+                                try:
+                                    sugg = suggest_next_steps(
+                                        {"age": age_eff, "sex": sex_eff, "bmi": bmi_val,
+                                         "fasting_glucose_mg_dl": eff_fast,
+                                         "after_meal_glucose_mg_dl": eff_pp,
+                                         "hba1c_pct": eff_a1c}, outcome, ai)
+                                except Exception:
+                                    sugg = []
+                            st.session_state[sugg_key] = sugg
+                        if sugg:
+                            st.markdown("#### ✅ Your personalized next steps")
+                            for t in sugg:
+                                st.write(f"- {t}")
                 else:
                     st.warning("Inconclusive — " + outcome["detail"])
                     skip = st.button("Assess anyway (low confidence)", type="secondary")

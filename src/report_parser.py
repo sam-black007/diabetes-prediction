@@ -26,8 +26,24 @@ try:
 except Exception:
     TESS_AVAILABLE = False
 
-OCR_READY = OCR_AVAILABLE or TESS_AVAILABLE
-OCR_ENGINE = "rapidocr" if OCR_AVAILABLE else ("tesseract" if TESS_AVAILABLE else "none")
+try:
+    import easyocr
+    EASYOCR_AVAILABLE = True
+except Exception:
+    EASYOCR_AVAILABLE = False
+
+_easy_reader = None
+def _get_easy_reader():
+    global _easy_reader
+    if _easy_reader is None:
+        _easy_reader = easyocr.Reader(["en"], gpu=False)
+    return _easy_reader
+
+OCR_READY = EASYOCR_AVAILABLE or OCR_AVAILABLE or TESS_AVAILABLE
+# Prefer the strongest engine available: EasyOCR > RapidOCR > Tesseract.
+OCR_ENGINE = ("easyocr" if EASYOCR_AVAILABLE else
+              "rapidocr" if OCR_AVAILABLE else
+              "tesseract" if TESS_AVAILABLE else "none")
 
 
 def _to_png(im):
@@ -76,13 +92,32 @@ def _preprocess_variants(raw_bytes):
 
 
 def _ocr_image_bytes(image_bytes):
-    """OCR an image (PNG/JPG/...) and return the recognized text (multiple passes)."""
+    """OCR an image (PNG/JPG/...) and return the recognized text (multiple passes).
+
+    Uses the strongest available engine (EasyOCR preferred) over several
+    preprocessed variants, so phone photos of reports are read as accurately
+    as possible. Results from every pass are merged (deduplicated).
+    """
     if not OCR_READY:
         return ""
     texts = []
     candidates = [image_bytes]
     candidates.extend(_preprocess_variants(image_bytes))
-    if OCR_AVAILABLE:
+    # 1) EasyOCR (strongest) — run over every enhanced variant.
+    if EASYOCR_AVAILABLE:
+        try:
+            reader = _get_easy_reader()
+            for cand in candidates:
+                try:
+                    results = reader.readtext(cand)
+                except Exception:
+                    results = []
+                if results:
+                    texts.append("\n".join(r[1] for r in results if r and len(r) > 1))
+        except Exception:
+            pass
+    # 2) RapidOCR fallback (only if EasyOCR produced nothing).
+    if not texts and OCR_AVAILABLE:
         engine = _get_ocr()
         for cand in candidates:
             try:
@@ -91,7 +126,8 @@ def _ocr_image_bytes(image_bytes):
                 result = None
             if result:
                 texts.append("\n".join(line[1] for line in result))
-    elif TESS_AVAILABLE:
+    # 3) Tesseract fallback.
+    elif not texts and TESS_AVAILABLE:
         from PIL import Image
         for cand in candidates:
             try:

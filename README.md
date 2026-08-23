@@ -28,6 +28,8 @@ falling back to built-in offline rules if no API key is set.
 | **Risk assessor** | `assess_diabetes_risk` | Returns a JSON verdict (diabetic / not), probability, reasoning, next steps, and which important values are still missing. |
 | **Data enricher** | `enrich_patient_data` | Infers non-clinical lifestyle context (activity, diet, sleep, stress, tips) from a description. |
 | **Web researcher** | `web_research_agent` | Summarizes the latest diabetes guidance, preferring WHO / CDC / NIDDK / IDF / ADA sources. |
+| **Next-step advisor** | `suggest_next_steps` | After a result, returns personalized, value-driven next-step tips (one cached call). |
+| **Missing-value suggester** | `suggest_missing_values` | When a user doesn't know a value, the AI proposes a plausible typical value so the screening isn't left blank. |
 
 ---
 
@@ -54,6 +56,15 @@ Built-in presets (in `PROVIDER_PRESETS`):
 | `openai` | `gpt-4o-mini` | (official) |
 
 All providers are OpenAI-compatible, so the agent just points the client at the right `base_url`.
+
+### Reading lab reports (OCR)
+
+Report photos/PDFs are read with the **strongest OCR engine available**, tried in
+this order: **EasyOCR** (preferred, if installed) → **RapidOCR** → **Tesseract**, over
+several preprocessed image variants, then merged. The raw OCR text is handed to the
+AI so it can read the report directly and catch values the parser misses. Enable the
+stronger engine with `pip install easyocr` (the app falls back automatically if it's
+absent).
 
 ---
 

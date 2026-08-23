@@ -320,10 +320,12 @@ def validate_report_values(ocr_text, regex_parsed, client=None):
     return vals, corrections
 
 
-def validate_and_explain_report(regex_parsed, outcome, values, client=None):
+def validate_and_explain_report(regex_parsed, outcome, values, ocr_text=None, client=None):
     """One LLM call that both cross-checks the OCR/parser values AND writes the
     patient-friendly explanation for the rule-based WHO/ADA outcome.
 
+    Pass the raw OCR text so the AI reads the report directly (not only the
+    regex parser's output) — this catches values the parser missed.
     Returns (ai_values, corrections, explanation) so the report tab only needs a
     single network round-trip instead of two (validate + explain).
     """
@@ -331,16 +333,19 @@ def validate_and_explain_report(regex_parsed, outcome, values, client=None):
     if client.mode == "offline":
         return {}, [], ""
     prompt = (
-        "Below is the values a regex parser extracted from a medical lab report, the "
-        "rule-based WHO/ADA conclusion for the patient, and the patient's final values.\n\n"
+        "Below is the raw OCR text of a medical lab report, the values a regex parser "
+        "extracted from it, the rule-based WHO/ADA conclusion, and the patient's final "
+        "values.\n\n"
+        f"Raw OCR text:\n{ocr_text or ''}\n\n"
         f"Parser values: {json.dumps(regex_parsed)}\n"
         f"Clinical conclusion: {outcome.get('state', 'Inconclusive')} — "
         f"{outcome.get('detail', '')}\n"
         f"Patient values (for context): {json.dumps(values)}\n\n"
         "Do THREE things and return ONLY one valid JSON object (no prose) with keys:\n"
         '1) "values": an object with numeric-or-null entries for exactly these keys: '
-        + ", ".join(REPORT_VALUE_KEYS) + ". Normalize glucose to mg/dL (mmol/L * 18) and "
-        "HbA1c to percent. Use null when truly absent.\n"
+        + ", ".join(REPORT_VALUE_KEYS) + ". Re-read the RAW OCR text yourself and prefer "
+        "it over the parser when they disagree. Normalize glucose to mg/dL (mmol/L * 18) "
+        "and HbA1c to percent. Use null when truly absent.\n"
         '2) "corrections": a list of {"field", "regex_value", "ai_value", "reason"} for '
         "every field where your reading differs from the parser's (empty list if none).\n"
         '3) "explanation": 2-4 warm, plain sentences explaining the conclusion using the '
@@ -472,6 +477,66 @@ def explain_verdict(values, outcome, client=None):
     )
     system = "You are a warm, careful medical screening assistant."
     return client.complete(prompt, system, temperature=0.3)
+
+
+def suggest_next_steps(values, outcome, client=None):
+    """Personalized, value-driven next-step suggestions after a screening result.
+
+    One cached LLM call; returns a list of short tip strings (safe, general
+    guidance — never a diagnosis).
+    """
+    client = client or AIClient()
+    if client.mode == "offline":
+        return []
+    prompt = (
+        "A diabetes screening app reached this conclusion for a patient: "
+        f"{outcome.get('state', 'Inconclusive')} — {outcome.get('detail', '')}.\n"
+        f"Patient values: {json.dumps(values)}\n\n"
+        "Give 3-5 short, personalized, actionable next-step suggestions that follow "
+        "from THESE specific numbers (e.g. if BMI is high suggest weight management; "
+        "if glucose is borderline suggest a confirmatory HbA1c test; if age > 45 "
+        "suggest annual screening). Bullet points only, one line each. This is "
+        "screening, not a diagnosis — keep suggestions safe and general."
+    )
+    system = "You are a careful medical screening assistant."
+    raw = client.complete(prompt, system, temperature=0.3)
+    tips = [ln.lstrip("-*• ").strip() for ln in raw.splitlines() if ln.strip()]
+    return [t for t in tips if t][:6]
+
+
+def suggest_missing_values(missing_fields, known_values, client=None):
+    """When the patient doesn't know a value, the AI proposes a plausible typical
+    value so the screening isn't left blank. Returns {field: float}.
+
+    The app asks the user first; this is only used when they answer 'don't know'.
+    """
+    client = client or AIClient()
+    if client.mode == "offline" or not missing_fields:
+        return {}
+    fields = ", ".join(missing_fields)
+    prompt = (
+        "A patient's diabetes screening is missing some values. Based on the known "
+        f"values below, suggest PLAUSIBLE typical values for these missing fields: {fields}.\n"
+        f"Known values: {json.dumps(known_values)}\n\n"
+        "Return ONLY JSON with those exact keys and numeric estimates (no prose). "
+        "These are reasonable guesses to avoid leaving blanks — label nothing as "
+        "certain. Use common clinical/population typicals: pregnancies 0-3, age 30-55, "
+        "BMI 22-28, blood pressure 110-130 (systolic), skin thickness 15-40, insulin "
+        "5-20, glucose 90-140, HbA1c 5.0-5.7, DiabetesPedigreeFunction 0.2-0.6."
+    )
+    system = "You are a data-imputation assistant. Respond with valid JSON only."
+    raw = client.complete(prompt, system, temperature=0.2)
+    data = _extract_json(raw)
+    out = {}
+    if data:
+        for f in missing_fields:
+            v = data.get(f)
+            try:
+                if v is not None:
+                    out[f] = float(v)
+            except Exception:
+                pass
+    return out
 
 
 LIFESTYLE_FIELDS = [
