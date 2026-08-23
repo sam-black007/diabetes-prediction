@@ -45,7 +45,7 @@ BASE_URL = _get("AI_BASE_URL")
 
 PROVIDER_PRESETS = {
     # OpenRouter — one key, many models; ":free" models cost nothing.
-    "openrouter": ("https://openrouter.ai/api/v1", "nvidia/nemotron-3.5-lightning:free"),
+    "openrouter": ("https://openrouter.ai/api/v1", "nvidia/nemotron-3-nano-30b-a3b:free"),
     # Google Gemini - generous free tier via AI Studio; OpenAI-compatible endpoint.
     "google":     ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-3.6-flash"),
     "gemini":     ("https://generativelanguage.googleapis.com/v1beta/openai/", "gemini-3.6-flash"),
@@ -90,7 +90,7 @@ class AIClient:
                 # OpenRouter key — one API for many models; prefer ":free" models.
                 base_url = PROVIDER_PRESETS["openrouter"][0]
                 self._model = self._model if (self._model and "/" in self._model) \
-                    else "nvidia/nemotron-3.5-lightning:free"
+                    else PROVIDER_PRESETS["openrouter"][1]
                 self.mode = "openrouter"
             elif API_KEY.startswith(("AIza", "AQ.")):
                 # Google AI Studio key ("AIza..." classic or "AQ." new format) —
