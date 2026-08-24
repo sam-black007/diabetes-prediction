@@ -835,6 +835,16 @@ def main():
         report = st.file_uploader("Choose a report (PDF or image)", type=["pdf", "png", "jpg", "jpeg"])
         pasted = st.text_area("…or paste the report text / values here if the photo won't read",
                               key="report_paste")
+        if not report and not pasted.strip():
+            st.markdown(
+                '<div style="background:#F2F6F8;border:1px solid #D8E2E7;border-radius:12px;'
+                'padding:24px 20px;text-align:center;margin:12px 0;">'
+                '<div style="font-size:28px;margin-bottom:8px;">📄</div>'
+                '<div style="font-size:15px;font-weight:600;color:#16242B;margin-bottom:4px;">No report uploaded yet</div>'
+                '<div style="font-size:13px;color:#7A8B93;">Upload a PDF or photo, or paste the report text above to get started.</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
         if report is not None or pasted.strip():
             is_image = bool(report) and report.name.lower().endswith((".png", ".jpg", ".jpeg"))
             if is_image:
@@ -1515,6 +1525,16 @@ def main():
 
         if tool == "Chat":
             st.write("Ask anything about diabetes risk, the screening features, or lifestyle.")
+            if not st.session_state.ai_messages:
+                st.markdown(
+                    '<div style="background:#F2F6F8;border:1px solid #D8E2E7;border-radius:12px;'
+                    'padding:24px 20px;text-align:center;margin:12px 0;">'
+                    '<div style="font-size:28px;margin-bottom:8px;">💬</div>'
+                    '<div style="font-size:15px;font-weight:600;color:#16242B;margin-bottom:4px;">Start a conversation</div>'
+                    '<div style="font-size:13px;color:#7A8B93;">Ask about diabetes risk, blood pressure, lifestyle tips, or anything health-related.</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
             # Suggested prompts (§23)
             if not st.session_state.ai_messages:
                 st.markdown(
