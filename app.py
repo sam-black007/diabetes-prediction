@@ -1562,7 +1562,7 @@ def main():
                     '</div>',
                     unsafe_allow_html=True,
                 )
-            # Suggested prompts (§23)
+            # Suggested prompts (§23) — trigger AI response on click
             if not st.session_state.ai_messages:
                 st.markdown(
                     '<div style="font-size:13px;color:#7A8B93;margin-bottom:6px;">Try a question:</div>',
@@ -1580,6 +1580,13 @@ def main():
                     with cols[i]:
                         if st.button(q, key=f"sug_{i}", use_container_width=True):
                             st.session_state.ai_messages.append({"role": "user", "content": q})
+                            with st.chat_message("user"):
+                                st.write(q)
+                            with st.chat_message("assistant"):
+                                with st.spinner("Thinking..."):
+                                    reply = chat_agent(st.session_state.ai_messages, ai)
+                                st.write(reply)
+                            st.session_state.ai_messages.append({"role": "assistant", "content": reply})
                             st.rerun()
             report_img = st.file_uploader(
                 "Attach a lab-report photo (optional) — it is read via OCR, never sent as an image",
