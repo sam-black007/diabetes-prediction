@@ -14,6 +14,11 @@ from reportlab.pdfgen import canvas
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 from report_parser import extract_text_from_pdf, extract_text_from_image, parse_report, OCR_ENGINE
+from clinical_rules import (
+    classify_glucose, classify_bp, compute_bmi, classify_lipids,
+    aggregate_evidence, severity_rank,
+)
+from ml_risk import predict_with_model
 
 # Resilient AI-module binding: during a Streamlit Cloud rebuild the app can
 # momentarily load against a stale module version. Bind each function
@@ -64,16 +69,6 @@ validate_and_explain_report = _bind("validate_and_explain_report",
                                     lambda *a, **k: ({}, [], "", []))
 suggest_next_steps = _bind("suggest_next_steps", lambda *a, **k: [])
 suggest_missing_values = _bind("suggest_missing_values", lambda *a, **k: {})
-screen_quick_glucose = _bind(
-    "screen_quick_glucose",
-    lambda *a, **k: ("Inconclusive", "", [], ["age", "sex", "weight_kg",
-                                              "fasting_glucose", "post_glucose"]),
-)
-_QC_LABELS = {
-    "age": "Age", "sex": "Sex", "weight_kg": "Weight (kg)",
-    "fasting_glucose": "Fasting glucose (before meal)",
-    "post_glucose": "Post-meal glucose (2h after)",
-}
 if _ai_mod is not None:
     INTAKE_FIELDS = getattr(_ai_mod, "INTAKE_FIELDS", INTAKE_FIELDS)
 
@@ -137,60 +132,44 @@ def load_artifacts():
             threshold = json.load(f).get("threshold", 0.5)
     return model, scaler, medians, threshold
 
-def clinical_stage(fasting, postmeal, hba1c):
-    """WHO/ADA diagnostic thresholds — what a health worker actually checks.
-
-    Returns (stage_label, explanation). None inputs are ignored.
-    """
-    if (fasting is not None and fasting >= 126) or \
-       (postmeal is not None and postmeal >= 200) or \
-       (hba1c is not None and hba1c >= 6.5):
-        return ("Diabetes range",
-                "Per WHO/ADA: fasting glucose ≥126 mg/dL, 2h/after-meal ≥200 mg/dL, or "
-                "HbA1c ≥6.5% is in the diabetes range — not just 'high BMI'.")
-    if (fasting is not None and fasting >= 100) or \
-       (postmeal is not None and postmeal >= 140) or \
-       (hba1c is not None and hba1c >= 5.7):
-        return ("Prediabetes range",
-                "Above normal but below diabetes thresholds (fasting 100–125, after-meal "
-                "140–199, HbA1c 5.7–6.4%). Lifestyle change now can prevent progression.")
-    return ("Normal / low range",
-            "Blood-sugar values are within the normal range. BMI, age and family history "
-            "still matter as risk factors — keep screening periodically.")
-
-
 def determine_verdict(fasting, postmeal, hba1c):
-    """Rule-based WHO/ADA conclusion. The rules decide; the AI only explains.
+    """Rule-based WHO/ADA conclusion via the centralized clinical engine.
 
     Returns {"state", "detail", "need"} where state is one of
     "Diabetic" | "Prediabetic" | "Normal" | "Inconclusive".
     """
-    rules = [
-        ("fasting glucose {v} mg/dL", fasting, 126.0, 100.0),
-        ("after-meal glucose {v} mg/dL", postmeal, 200.0, 140.0),
-        ("HbA1c {v}%", hba1c, 6.5, 5.7),
-    ]
-    known = [(name.format(v=val), val, dia, pre)
-             for name, val, dia, pre in rules if val]
-    if not known:
+    rules = []
+    if fasting is not None:
+        rules.append(classify_glucose(fasting, "fasting"))
+    if postmeal is not None:
+        rules.append(classify_glucose(postmeal, "postmeal2h"))
+    if hba1c is not None:
+        rules.append(classify_glucose(hba1c, "hba1c"))
+    if not rules:
         return {"state": "Inconclusive",
-                "detail": "No blood-sugar values (glucose or HbA1c) were found in the report.",
+                "detail": "No blood-sugar values (glucose or HbA1c) were found.",
                 "need": ["fasting glucose, after-meal glucose or HbA1c"]}
-    if any(val >= dia for _n, val, dia, _p in known):
-        hit = ", ".join(n for n, v, dia, _p in known if v >= dia)
-        return {"state": "Diabetic",
-                "detail": f"In the diabetes range per WHO/ADA: {hit}.",
-                "need": []}
-    if any(val >= pre for _n, val, _d, pre in known):
-        hit = ", ".join(n for n, v, _d, pre in known if v >= pre)
-        need = [] if (hba1c and hba1c >= 5.7) else ["HbA1c"]
-        return {"state": "Prediabetic",
-                "detail": f"Above normal but below diabetes thresholds: {hit}.",
-                "need": need}
-    names = ", ".join(n for n, _v, _d, _p in known)
-    return {"state": "Normal",
-            "detail": f"All measured markers are within the normal range: {names}.",
-            "need": []}
+    worst = max(rules, key=lambda r: severity_rank(r["severity"]))
+    cat = worst["category"]
+    if cat == "diabetes_range":
+        state = "Diabetic"
+    elif cat in ("prediabetes", "needs_confirmation"):
+        state = "Prediabetic"
+    else:
+        state = "Normal"
+    need = [] if (hba1c is not None and hba1c >= 5.7) else ["HbA1c"]
+    return {"state": state, "detail": worst["interpretation"], "need": need}
+
+
+def clinical_stage(fasting, postmeal, hba1c):
+    """Back-compat wrapper returning (stage_label, explanation).
+
+    Delegates to the centralized engine so thresholds live in one place.
+    """
+    dv = determine_verdict(fasting, postmeal, hba1c)
+    label = {"Diabetic": "Diabetes range", "Prediabetic": "Prediabetes range",
+             "Normal": "Normal / low range", "Inconclusive": "Inconclusive"}.get(dv["state"], "Normal / low range")
+    return (label, dv["detail"])
 
 
 # (UI label, session key, parser key, AI key, step)
@@ -294,8 +273,8 @@ def ai_assess(values, ai, context=None):
     return res, []
 
 
-def show_result(pred, prob, values, threshold, clinical=None):
-    """Render the result: a clinical (WHO/ADA) verdict plus the ML screening estimate."""
+def show_result(pred, prob, values, threshold, clinical=None, ml=None):
+    """Render the result: clinical rules + AI verdict + separate ML screening estimate."""
     if clinical:
         stage, detail = clinical
         box = "alert-box" if stage == "Diabetes range" else (
@@ -321,6 +300,21 @@ def show_result(pred, prob, values, threshold, clinical=None):
       <div class="chip-row">{chips}</div>
     </div>
     ''', unsafe_allow_html=True)
+    if ml is not None:
+        ml_label = ("Elevated model-estimated risk" if ml["score"] >= threshold
+                    else "Lower model-estimated risk")
+        ml_class = "cat-high" if ml["score"] >= threshold else "cat-low"
+        st.markdown(f'''
+        <div class="result-card" style="border-left:4px solid #6C5CE7">
+          <h3>ML screening model (PIMA Random Forest)</h3>
+          <div class="risk-headline">
+            <span class="risk-score">{ml['score']:.0%}</span>
+            <span class="risk-cat {ml_class}">{ml_label}</span>
+          </div>
+          <p>Model-estimated risk score only — NOT a diagnosis and NOT clinically
+          validated. Recall is weak (~61%); treat as a supplementary screen.</p>
+        </div>
+        ''', unsafe_allow_html=True)
     st.markdown(
         '<div class="disclaimer">Screening only — not a diagnosis. A positive result should be '
         'confirmed with a fasting glucose / HbA1c test per WHO &amp; IDF guidance.</div>',
@@ -764,7 +758,7 @@ def main():
     )
 
     tab1, tab2, tab3, tab4 = st.tabs(
-        ["Medical Report", "Guided Intake", "Quick Glucose Check", "AI Clinical Assistant"])
+        ["Medical Report", "Guided Intake", "Quick Health Check", "AI Clinical Assistant"])
 
     # ---------------- Tab 1: Medical Report (primary) ----------------
     with tab1:
@@ -889,23 +883,16 @@ def main():
                                 ) or {}
                             except Exception:
                                 got = {}
-                            # If the user clearly doesn't know, let the AI suggest
-                            # a typical value instead of leaving the slot blank.
-                            low = chat_reply.lower()
-                            if not got and any(w in low for w in
-                                               ["don't know", "dont know", "unknown",
-                                                "not sure", "idk", "no idea", "skip"]):
-                                try:
-                                    sug = suggest_missing_values(
-                                        [fid for fid, _q in missing_items],
-                                        _known_ctx(), ai
-                                    ) or {}
-                                except Exception:
-                                    sug = {}
-                                got = sug
-                                if sug:
-                                    st.info("You weren't sure, so the AI suggested typical "
-                                            "estimates for the blanks — review them below.")
+                            # Unknown values are intentionally NOT fabricated — if the
+                            # user doesn't know, the slot simply stays blank and the
+                            # screen proceeds with the values it has.
+                            if not got:
+                                low = chat_reply.lower()
+                                if any(w in low for w in
+                                       ["don't know", "dont know", "unknown",
+                                        "not sure", "idk", "no idea", "skip"]):
+                                    st.info("No problem — the values you don't know are "
+                                            "left blank; the screen uses what you provided.")
                         for k, v in got.items():
                             st.session_state["_ans_" + k] = v
 
@@ -915,8 +902,8 @@ def main():
                 if still_open:
                     st.markdown("#### 🤖 The assistant needs a few more details")
                     st.caption("Answer in your own words above, or fill the quick fields "
-                               "below. If you're unsure about any of them, tap the button "
-                               "and the AI will suggest a typical value for you.")
+                               "below. Values you leave blank stay unknown — the screen "
+                               "uses only what you provide.")
                     for fid, q in missing_items:
                         if fid not in still_open:
                             continue
@@ -932,20 +919,8 @@ def main():
                             st.number_input(q, 0.0, 20.0, step=0.1, key="_ans_hba1c")
                         elif fid == "postmeal":
                             st.number_input(q, 0.0, 600.0, key="_ans_postmeal")
-                    if st.button("✨ I don't know these — let the AI suggest",
-                                 key="_ai_suggest_missing"):
-                        with st.spinner("AI is suggesting typical values..."):
-                            try:
-                                sug = suggest_missing_values(
-                                    still_open, _known_ctx(), ai
-                                ) or {}
-                            except Exception:
-                                sug = {}
-                        for f, v in sug.items():
-                            st.session_state["_ans_" + f] = v
-                        if sug:
-                            st.success("AI added typical estimates for the blanks — "
-                                       "review or change them if you can.")
+                    st.info("Tip: leave a field blank if you don't know it — the screen "
+                            "uses only the values you provide and flags the rest.")
 
                 def _val(fid):
                     v = st.session_state.get("_ans_" + fid)
@@ -1069,7 +1044,8 @@ def main():
                     else:
                         pred = int(res["verdict"] == "diabetic")
                         prob = float(res.get("probability") or 0.5)
-                        show_result(pred, prob, vals, threshold, clinical=clinical)
+                        ml = predict_with_model(vals, model, medians, threshold) if model else None
+                        show_result(pred, prob, vals, threshold, clinical=clinical, ml=ml)
                         st.markdown("#### AI agent verdict — why")
                         st.write(res.get("reasoning") or "(no reasoning returned)")
             else:
@@ -1109,7 +1085,8 @@ def main():
                     else:
                         pred = int(res["verdict"] == "diabetic")
                         prob = float(res.get("probability") or 0.5)
-                        show_result(pred, prob, values, threshold, clinical=clinical)
+                        ml = predict_with_model(values, model, medians, threshold) if model else None
+                        show_result(pred, prob, values, threshold, clinical=clinical, ml=ml)
                         st.markdown("#### AI agent verdict — why")
                         st.write(res.get("reasoning") or "(no reasoning returned)")
                         if res.get("missing"):
@@ -1197,66 +1174,173 @@ def main():
 
     # ---------------- Tab 3: AI Clinical Assistant ----------------
     with tab3:
-        st.subheader("Quick glucose check (no BMI needed)")
-        st.write("Answer 5 easy questions — age, sex, weight, and your blood sugar "
-                 "**before** and **after** a meal. This screen uses WHO/ADA glucose "
-                 "thresholds and does NOT require BMI or a lab report.")
-        c1, c2 = st.columns(2)
-        with c1:
-            q_age = st.number_input("Age (years)", min_value=1, max_value=120, value=None,
-                                    step=1, key="qc_age")
-            q_sex = st.radio("Sex", ["male", "female"], horizontal=True, key="qc_sex")
-        with c2:
-            q_weight = st.number_input("Weight (kg)", min_value=2.0, max_value=400.0, value=None,
-                                       step=0.5, key="qc_weight")
-            q_fast = st.number_input("Fasting glucose (before meal, mg/dL)", min_value=20,
-                                     max_value=600, value=None, step=1, key="qc_fast")
-            q_post = st.number_input("Post-meal glucose (2h after, mg/dL)", min_value=20,
-                                     max_value=600, value=None, step=1, key="qc_post")
+        st.subheader("Quick Health Check")
+        st.write("A fast screen from a few self-known values. Clinical rules run locally "
+                 "and deterministically; the AI only explains the result. This is screening, "
+                 "not a diagnosis.")
+        with st.expander("Basic check", expanded=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                q_age = st.number_input("Age (years)", min_value=1, max_value=120,
+                                        value=None, step=1, key="qc_age")
+                q_sex = st.radio("Sex", ["male", "female"], horizontal=True, key="qc_sex")
+                q_weight = st.number_input("Weight (kg)", min_value=2.0, max_value=400.0,
+                                           value=None, step=0.5, key="qc_weight")
+                q_height = st.number_input("Height (cm)", min_value=50.0, max_value=260.0,
+                                           value=None, step=0.5, key="qc_height")
+            with c2:
+                q_fast = st.number_input("Fasting glucose (mg/dL)", min_value=20,
+                                         max_value=600, value=None, step=1, key="qc_fast")
+                q_post = st.number_input("2-hour post-meal glucose (mg/dL)", min_value=20,
+                                         max_value=600, value=None, step=1, key="qc_post")
+                q_hba1c = st.number_input("HbA1c (%)", min_value=3.0, max_value=16.0,
+                                          value=None, step=0.1, key="qc_hba1c")
+                q_sbp = st.number_input("Systolic BP (mmHg)", min_value=50, max_value=300,
+                                        value=None, step=1, key="qc_sbp")
+                q_dbp = st.number_input("Diastolic BP (mmHg)", min_value=30, max_value=200,
+                                        value=None, step=1, key="qc_dbp")
+        with st.expander("Advanced / lab inputs (optional)"):
+            c3, c4 = st.columns(2)
+            with c3:
+                q_ogtt = st.number_input("2-hour OGTT glucose (mg/dL)", min_value=20,
+                                         max_value=600, value=None, step=1, key="qc_ogtt")
+                q_rand = st.number_input("Random glucose (mg/dL)", min_value=20,
+                                         max_value=600, value=None, step=1, key="qc_rand")
+            with c4:
+                q_hr = st.number_input("Heart rate (bpm)", min_value=30, max_value=220,
+                                       value=None, step=1, key="qc_hr")
+                q_waist = st.number_input("Waist circumference (cm)", min_value=40,
+                                          max_value=200, value=None, step=1, key="qc_waist")
+                q_ldl = st.number_input("LDL-C (mg/dL)", min_value=20, max_value=400,
+                                        value=None, step=1, key="qc_ldl")
+                q_hdl = st.number_input("HDL-C (mg/dL)", min_value=10, max_value=150,
+                                        value=None, step=1, key="qc_hdl")
+                q_trig = st.number_input("Triglycerides (mg/dL)", min_value=20,
+                                         max_value=1000, value=None, step=1, key="qc_trig")
 
-        if st.button("Check my risk", key="qc_run"):
+        symptoms = st.multiselect(
+            "Any urgent symptoms now? (a high reading + symptoms can be an emergency)",
+            ["chest pain", "shortness of breath", "vision changes", "weakness/numbness",
+             "difficulty speaking", "altered mental status", "confusion/seizure",
+             "vomiting/dehydration"],
+        )
+
+        if st.button("Check my health", key="qc_run"):
             age = q_age if q_age else None
             sex = q_sex
             weight = q_weight if q_weight else None
+            height = q_height if q_height else None
             fast = q_fast if q_fast else None
             post = q_post if q_post else None
-            state, explain, steps, missing = screen_quick_glucose(
-                age, sex, weight, fast, post, client=ai)
+            hba1c = q_hba1c if q_hba1c else None
+            sbp = q_sbp if q_sbp else None
+            dbp = q_dbp if q_dbp else None
+            ogtt = q_ogtt if q_ogtt else None
+            rand = q_rand if q_rand else None
+
+            glucose_rules = []
+            if fast is not None:
+                glucose_rules.append(classify_glucose(fast, "fasting"))
+            if post is not None:
+                glucose_rules.append(classify_glucose(post, "postmeal2h"))
+            if hba1c is not None:
+                glucose_rules.append(classify_glucose(hba1c, "hba1c"))
+            if ogtt is not None:
+                glucose_rules.append(classify_glucose(ogtt, "ogtt2h"))
+            if rand is not None:
+                glucose_rules.append(classify_glucose(rand, "random"))
+            bp_rule = classify_bp(sbp, dbp, symptoms) if (sbp or dbp) else None
+            bmi_rule = compute_bmi(weight, height) if (weight and height) else None
+            lipid_rules = classify_lipids(
+                ldl=q_ldl if q_ldl else None, hdl=q_hdl if q_hdl else None,
+                trig=q_trig if q_trig else None)
+
+            bmi_val = bmi_rule["value"] if (bmi_rule and bmi_rule["category"] != "missing") else 0
+            ml_in = {"Age": age or 0, "Glucose": fast if fast else 0,
+                     "BloodPressure": sbp if sbp else 0, "BMI": bmi_val}
+            ml = predict_with_model(ml_in, model, medians, threshold) if model else None
+
+            ev = aggregate_evidence(
+                glucose_rules=glucose_rules, bp_rule=bp_rule, bmi_rule=bmi_rule,
+                lipid_rules=lipid_rules, ml=ml)
+
+            st.markdown("### HEALTH SCREENING SUMMARY")
+            for r in glucose_rules:
+                st.markdown(f"{r['color']} **Glucose ({r['measurement_type']})**: {r['status']}")
+            if not glucose_rules:
+                st.markdown("🟢 Glucose: not provided")
+            if bp_rule:
+                st.markdown(f"{bp_rule['color']} **Blood pressure**: {bp_rule['status']}")
+            if bmi_rule:
+                st.markdown(f"{bmi_rule['color']} **BMI**: {bmi_rule['status']}")
+            for r in lipid_rules:
+                st.markdown(f"{r['color']} **{r['measurement_type']}**: {r['status']}")
+            if ml:
+                st.markdown(f"🟣 **ML screening model**: model-estimated risk "
+                            f"{ml['score']:.0%} (research/baseline only)")
+
+            if ev["red_flags"]:
+                st.error("🚨 URGENT FLAGS — seek medical attention")
+                for f in ev["red_flags"]:
+                    st.write(f"- {f['message']}")
+
+            missing = []
+            if fast is None and hba1c is None:
+                missing.append("fasting glucose or HbA1c")
+            if not (sbp and dbp):
+                missing.append("both blood-pressure numbers")
+            if not (weight and height):
+                missing.append("weight & height (for BMI)")
             if missing:
-                st.warning("To check your risk I need these details: "
-                           + ", ".join(_QC_LABELS.get(m, m) for m in missing)
-                           + ". Please fill them in above.")
+                st.warning("For a fuller screen, also provide: " + ", ".join(missing) + ".")
                 if ai.mode != "offline":
                     ask = chat_agent([{"role": "user", "content":
-                        f"The user did a quick diabetes screen but left out: "
-                        f"{', '.join(_QC_LABELS.get(m, m) for m in missing)}. "
-                        f"Politely ask them to provide those values (age, sex, weight, "
-                        f"fasting glucose, post-meal glucose). Keep it to 2 sentences."}],
-                        client=ai)
+                        f"The user did a quick health check but did not provide: "
+                        f"{', '.join(missing)}. Politely ask them to add those values. "
+                        f"2 sentences."}], client=ai)
                     st.info(ask)
-            else:
-                color = {"Diabetic range": "#C0392B", "Prediabetic range": "#E67E22",
-                         "Normal range": "#27AE60"}.get(state, "#0E7C86")
-                st.markdown(f"#### Result: <span style='color:{color}'>{state}</span>",
-                            unsafe_allow_html=True)
-                if explain:
-                    st.write(explain)
-                if steps:
-                    st.markdown("**Personalized next steps**")
-                    for s in steps:
-                        st.write(f"- {s}")
-                st.caption("Screening only — not a diagnosis. Confirm with a clinician via "
-                           "fasting glucose / HbA1c test.")
 
-        st.markdown("---")
-        st.markdown("**For a more accurate result, also consider:**")
-        st.markdown(
-            "- **HbA1c test** — ≥6.5% indicates diabetes, 5.7–6.4% prediabetes (no fasting needed).\n"
-            "- **Oral glucose tolerance test (OGTT)** — 2-hour blood sugar is the most sensitive check.\n"
-            "- **Repeat fasting glucose** on two separate mornings.\n"
-            "- **Upload your lab report** (Medical Report tab) — OCR reads exact values, more reliable than memory.\n"
-            "- Add **blood pressure** and **family history** — they sharpen risk further."
-        )
+            st.caption("Screening only — not a diagnosis. Confirm with a clinician via "
+                       "fasting glucose / HbA1c / OGTT.")
+
+            if ai.mode != "offline":
+                summary = {
+                    "glucose": [r["status"] for r in glucose_rules],
+                    "bp": bp_rule["status"] if bp_rule else "not provided",
+                    "bmi": bmi_rule["status"] if bmi_rule else "not provided",
+                    "ml_score": round(ml["score"], 2) if ml else None,
+                    "red_flags": [f["message"] for f in ev["red_flags"]],
+                }
+                explain = chat_agent([{"role": "user", "content":
+                    "Explain this screening summary to the patient in 2-4 plain, warm "
+                    "sentences. Do NOT diagnose. Highlight any urgent flag. Summary: "
+                    + json.dumps(summary)}], client=ai)
+                st.markdown("#### AI explanation")
+                st.write(explain)
+
+        with st.expander("Glucose reference (mg/dL)"):
+            st.table(pd.DataFrame([
+                {"Range": "<40", "Category": "Extremely low", "Status": "🔴 Critical hypoglycemia"},
+                {"Range": "40-53", "Category": "Level 2 hypoglycemia", "Status": "🔴 Severe low"},
+                {"Range": "54-69", "Category": "Level 1 hypoglycemia", "Status": "🟠 Low"},
+                {"Range": "70-99", "Category": "Normal fasting", "Status": "🟢 Normal"},
+                {"Range": "100-125", "Category": "Prediabetes (IFG)", "Status": "🟡 Prediabetes range"},
+                {"Range": "126-199", "Category": "Diabetes-range*", "Status": "🟠 Needs confirmation"},
+                {"Range": ">=200", "Category": "Diabetes-range", "Status": "🔴 Diabetes-range"},
+                {"Range": ">250", "Category": "Markedly high", "Status": "🔴 Very high"},
+                {"Range": ">=300", "Category": "Severe hyperglycemia", "Status": "🔴 Critical/high-risk"},
+                {"Range": ">=400", "Category": "Extremely high", "Status": "🔴 Emergency-level"},
+            ]))
+        with st.expander("Blood pressure reference (mmHg)"):
+            st.table(pd.DataFrame([
+                {"Reading": "<90 / <60", "Category": "Low BP", "Status": "🟠 Low"},
+                {"Reading": "90-119 / <80", "Category": "Normal", "Status": "🟢 Normal"},
+                {"Reading": "120-129 / <80", "Category": "Elevated", "Status": "🟡 Elevated"},
+                {"Reading": "130-139 / 80-89", "Category": "Stage 1", "Status": "🟠 High"},
+                {"Reading": ">=140 or >=90", "Category": "Stage 2", "Status": "🔴 Very high"},
+                {"Reading": ">180 and/or >120", "Category": "Severe", "Status": "🔴 Critical"},
+                {"Reading": ">180 and/or >120 + symptoms", "Category": "Emergency", "Status": "🔴 Emergency"},
+            ]))
 
     with tab4:
         st.subheader("AI Clinical Assistant")

@@ -440,62 +440,14 @@ def suggest_next_steps(values, outcome, client=None):
 
 
 def suggest_missing_values(missing_fields, known_values, client=None):
-    """When the patient doesn't know a value, the AI proposes a plausible typical
-    value so the screening isn't left blank. Returns {field: float}.
+    """Missing clinical values are intentionally NEVER fabricated.
 
-    The app asks the user first; this is only used when they answer 'don't know'.
+    Inventing lab results (glucose, HbA1c, blood pressure, BMI, ...) would make
+    the screen look precise when it isn't and could mislead a user. We return an
+    empty dict so unknown stays unknown; the app flags the gap and the ML model
+    falls back to its training medians for PIMA features only.
     """
-    if not missing_fields:
-        return {}
-    fields = ", ".join(missing_fields)
-    prompt = (
-        "A patient's diabetes screening is missing some values. Based on the known "
-        f"values below, suggest PLAUSIBLE typical values for these missing fields: {fields}.\n"
-        f"Known values: {json.dumps(known_values)}\n\n"
-        "Return ONLY JSON with those exact keys and numeric estimates (no prose). "
-        "These are reasonable guesses to avoid leaving blanks — label nothing as "
-        "certain. Use common clinical/population typicals: pregnancies 0-3, age 30-55, "
-        "BMI 22-28, blood pressure 110-130 (systolic), skin thickness 15-40, insulin "
-        "5-20, glucose 90-140, HbA1c 5.0-5.7, DiabetesPedigreeFunction 0.2-0.6."
-    )
-    system = "You are a data-imputation assistant. Respond with valid JSON only."
-    data = _ask_json(prompt, system, 0.2, client)
-    if not data:
-        return {}
-    return {f: v for f, v in _to_floats(data).items() if f in missing_fields}
-
-
-def screen_quick_glucose(age=None, sex=None, weight_kg=None, fasting_glucose=None,
-                         post_glucose=None, client=None):
-    """Quick risk screen from 5 easy self-known inputs (BMI NOT required):
-    age, sex, weight (kg), fasting (before-meal) glucose and post-meal glucose (mg/dL).
-    Returns (state, explanation, next_steps, missing).
-    """
-    fields = {"age": age, "sex": sex, "weight_kg": weight_kg,
-              "fasting_glucose": fasting_glucose, "post_glucose": post_glucose}
-    missing = [k for k, v in fields.items()
-               if v is None or (isinstance(v, str) and str(v).strip() == "")]
-    diabetic = (fasting_glucose is not None and fasting_glucose >= 126) or \
-               (post_glucose is not None and post_glucose >= 200)
-    prediab = (fasting_glucose is not None and 100 <= fasting_glucose <= 125) or \
-              (post_glucose is not None and 140 <= post_glucose <= 199)
-    state = "Diabetic range" if diabetic else ("Prediabetic range" if prediab else "Normal range")
-    prompt = (
-        "A person did a quick diabetes screen with these self-known values "
-        f"(BMI was NOT used): age={age}, sex={sex}, weight_kg={weight_kg}, "
-        f"fasting_glucose_mg_dl={fasting_glucose}, post_meal_glucose_mg_dl={post_glucose}.\n"
-        f"Rule-based WHO/ADA glucose conclusion: {state}.\n\n"
-        "Return ONLY valid JSON with two keys: 'explanation' (2-4 warm, plain sentences using "
-        "the actual numbers, noting this is screening not a diagnosis) and 'next_steps' (3-5 short "
-        "personalized tips). If glucose is in a warning range, suggest confirmatory HbA1c / OGTT "
-        "lab tests; if weight looks high for the age, mention weight management."
-    )
-    system = "You are a careful medical screening assistant. Respond with valid JSON only."
-    data = _ask_json(prompt, system, 0.2, client)
-    explanation = str(data.get("explanation") or "") if data else ""
-    steps = data.get("next_steps") if data else None
-    next_steps = [str(t) for t in steps] if isinstance(steps, list) else []
-    return state, explanation, next_steps, missing
+    return {}
 
 
 LIFESTYLE_FIELDS = [

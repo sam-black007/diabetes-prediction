@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 .env
+.freebuff/
+.devcontainer/.agents/
+.devcontainer/.freebuff/

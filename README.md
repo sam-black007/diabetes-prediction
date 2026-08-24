@@ -29,8 +29,7 @@ falling back to built-in offline rules if no API key is set.
 | **Data enricher** | `enrich_patient_data` | Infers non-clinical lifestyle context (activity, diet, sleep, stress, tips) from a description. |
 | **Web researcher** | `web_research_agent` | Summarizes the latest diabetes guidance, preferring WHO / CDC / NIDDK / IDF / ADA sources. |
 | **Next-step advisor** | `suggest_next_steps` | After a result, returns personalized, value-driven next-step tips (one cached call). |
-| **Missing-value suggester** | `suggest_missing_values` | When a user doesn't know a value, the AI proposes a plausible typical value so the screening isn't left blank. |
-| **Quick glucose screen** | `screen_quick_glucose` | From age, sex, weight, fasting + post-meal glucose (**no BMI needed**): a WHO/ADA verdict, asks for any missing inputs, and points to HbA1c / OGTT for a more accurate check. |
+| **No-fabrication policy** | `suggest_missing_values` | Intentionally returns **nothing** — unknown clinical values are never invented. The app flags the gap and the ML model falls back to training medians for PIMA features only. |
 
 ---
 
@@ -66,6 +65,39 @@ several preprocessed image variants, then merged. The raw OCR text is handed to 
 AI so it can read the report directly and catch values the parser misses. Enable the
 stronger engine with `pip install easyocr` (the app falls back automatically if it's
 absent).
+
+---
+
+## Clinical rules engine (deterministic, no fabrication)
+
+Every verdict a user sees comes from a single, transparent, offline rules layer —
+`src/clinical_rules.py` — **not** from the LLM. The AI only *explains* the result in
+plain language. This keeps the screen medically grounded (ADA 2026 glucose + AHA/ACC
+2025 blood-pressure thresholds) and means it works even with no API key.
+
+- **Glucose is measurement-type aware.** Fasting, 2-hour post-meal, HbA1c (%), 2-hour
+  OGTT and random glucose are classified by their own thresholds, with explicit
+  hypoglycemia tiers (ADA 2026: Level 1 `<70 & ≥54`, Level 2 `<54`, plus a `<40` critical
+  low and `≥250 / ≥300 / ≥400` high-risk hyperglycemia bands).
+- **Blood pressure uses independent SBP / DBP OR logic** (AHA/ACC 2025): a reading is
+  Stage 2 if *either* number is high (e.g. 150/75 and 110/95 both flag Stage 2), and a
+  severe reading **with** urgent symptoms is escalated to a hypertensive emergency.
+- **BMI** is computed from height + weight (no BMI needed to start a check).
+- **Lipids** (LDL-C, HDL-C, triglycerides) are scored independently when provided.
+- **Red-flag engine** surfaces emergencies (glucose ≥400, BP emergency + symptoms) up
+  front, and an **evidence aggregator** merges every signal into one severity-ranked
+  summary with its source citation.
+
+The PIMA Random-Forest model (`data/processed/best_model.joblib`) is also wired in via
+`src/ml_risk.py`: it runs as a *supplementary* research/baseline score (PIMA feature
+order, median imputation for missing fields, **no scaler** — the trained pipeline is
+unscaled). Its score is shown separately and labelled NOT a diagnosis, because its
+recall on PIMA is only ~61%.
+
+The app's three interactive modes all use this engine: the **Guided Intake** (8 PIMA
+fields → rules + AI verdict + ML score), the **Quick Health Check** (glucose type, BP,
+HbA1c/OGTT separation, BMI, lipids, red flags, reference tables), and the **Medical
+Report** OCR flow.
 
 ---
 
@@ -187,11 +219,16 @@ The app's thresholds and guidance are grounded in these authoritative sources:
 ```
 src/
   ai_agents.py          the AI agent layer (all agents + AIClient + offline fallbacks)
+  clinical_rules.py     deterministic clinical engine (glucose by type, BP OR-logic, BMI,
+                        lipids, red flags, evidence aggregation) — the source of truth for verdicts
+  ml_risk.py            PIMA Random-Forest inference (predict_with_model) used as a supplementary screen
   report_parser.py      reads lab-report PDFs / images (OCR text fed to the AI)
   risk_questionnaire.py FINDRISC lifestyle risk score
-app.py                  Streamlit app that wires the agents into the UI
+app.py                  Streamlit app that wires the agents + clinical engine into the UI
 tests/
-  test_project.py       automated sanity checks
+  test_project.py        automated sanity checks
+  test_clinical_rules.py edge-case tests for glucose / BP / BMI / lipids / red flags
+  test_ml_risk.py        loads the trained model and checks the prediction shape
 requirements.txt
 ```
 
