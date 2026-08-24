@@ -1251,33 +1251,42 @@ def main():
             )
 
             # ---- Measurements ----
-            def _m_row(label, value, unit, status, color, source=""):
+            def _m_row(label, value, unit, status, color, source="", why=""):
                 src = f'<span style="font-size:11px;color:#7A8B93;margin-left:6px;">({source})</span>' if source else ""
+                why_html = ""
+                if why:
+                    why_html = (
+                        f'<div style="font-size:12px;color:#5F7080;padding:4px 0 6px 2px;">'
+                        f'💬 {why}</div>'
+                    )
                 return (
-                    f'<div style="display:flex;justify-content:space-between;align-items:center;'
-                    f'padding:10px 0;border-bottom:1px solid #F0F2F4;">'
+                    f'<div style="padding:10px 0;border-bottom:1px solid #F0F2F4;">'
+                    f'<div style="display:flex;justify-content:space-between;align-items:center;">'
                     f'<div><div style="font-size:13px;color:#7A8B93;">{label}{src}</div>'
                     f'<div style="font-size:18px;font-weight:600;color:#16242B;">{value} <span style="font-size:13px;color:#7A8B93;">{unit}</span></div></div>'
                     f'<div style="font-size:13px;font-weight:600;color:{color};">{status}</div>'
-                    f'</div>'
+                    f'</div>{why_html}</div>'
                 )
             rows = []
             for r in glucose_rules:
+                why = r.get("interpretation", "")
                 rows.append(_m_row(
-                    f"Glucose ({r['measurement_type']})", r["value"], "mg/dL" if r["measurement_type"] != "hba1c" else "%",
-                    r["status"], r["color"], r.get("source", "")))
+                    f"Glucose ({r['measurement_type']})", r["value"],
+                    "mg/dL" if r["measurement_type"] != "hba1c" else "%",
+                    r["status"], r["color"], r.get("source", ""), why))
             if bp_rule:
                 rows.append(_m_row(
                     "Blood pressure", f"{sbp}/{dbp}" if sbp and dbp else str(sbp or dbp),
-                    "mmHg", bp_rule["status"], bp_rule["color"], bp_rule.get("source", "")))
+                    "mmHg", bp_rule["status"], bp_rule["color"], bp_rule.get("source", ""),
+                    bp_rule.get("interpretation", "")))
             if bmi_rule:
                 rows.append(_m_row(
                     "BMI", f'{bmi_rule["value"]:.1f}', "kg/m²",
-                    bmi_rule["status"], bmi_rule["color"]))
+                    bmi_rule["status"], bmi_rule["color"], why=bmi_rule.get("message", "")))
             for r in lipid_rules:
                 rows.append(_m_row(
                     r["measurement_type"], r["value"], "mg/dL",
-                    r["status"], r["color"], r.get("source", "")))
+                    r["status"], r["color"], r.get("source", ""), r.get("interpretation", "")))
             if rows:
                 st.markdown(
                     '<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
