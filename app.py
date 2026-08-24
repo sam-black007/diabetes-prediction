@@ -591,6 +591,30 @@ body {
 .back-bar button { background: #F2F6F8; border: 1px solid #E3EBEF; border-radius: 8px; padding: 6px 14px; font-size: 13px; color: #41565F; cursor: pointer; font-weight: 500; }
 .back-bar button:hover { background: #0E7C86; color: #FFFFFF; border-color: #0E7C86; }
 
+/* Mobile-first responsive */
+@media (max-width: 768px) {
+    .landing-grid { grid-template-columns: 1fr; max-width: 100%; }
+    .landing-hero h1 { font-size: 26px; }
+    .landing-hero .sub { font-size: 15px; }
+    .hero { flex-direction: column; text-align: center; padding: 20px 16px; }
+    .hero h1 { font-size: 22px; }
+    .hero-art { margin: 0 auto; width: 100px; }
+    .trust-strip { flex-direction: column; gap: 6px; }
+    .step-strip { flex-direction: column; }
+    .result-card { padding: 16px 14px; }
+    .risk-score { font-size: 32px; }
+    .chip-row { gap: 6px; }
+    .chip { font-size: 12px; padding: 4px 8px; }
+    [data-testid="stMetric"] { padding: 8px 10px; }
+    .stTabs [data-baseweb="tab"] { padding: 7px 12px; font-size: 13px; }
+}
+@media (max-width: 480px) {
+    .landing-hero h1 { font-size: 22px; }
+    .landing-card { padding: 18px 12px; }
+    .landing-card .icon { font-size: 28px; }
+    .landing-card h3 { font-size: 14px; }
+}
+
 /* Hero tag + step strip */
 .hero-tag {
     display: inline-block; background: rgba(255,255,255,0.18); padding: 3px 11px;
