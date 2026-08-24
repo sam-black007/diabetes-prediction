@@ -1049,6 +1049,25 @@ def main():
         st.write("A fast screen from a few self-known values. Clinical rules run locally "
                  "and deterministically; the AI only explains the result. This is screening, "
                  "not a diagnosis.")
+        st.markdown(
+            '<div style="display:flex;align-items:center;gap:0;margin:8px 0 18px;">'
+            '<div style="text-align:center;flex:1;">'
+            '<div style="width:28px;height:28px;border-radius:50%;background:#0E7C86;color:#fff;'
+            'display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;">1</div>'
+            '<div style="font-size:12px;color:#16242B;font-weight:600;margin-top:4px;">Basics</div></div>'
+            '<div style="flex:0 0 auto;width:40px;height:2px;background:#D8E2E7;margin:0 -4px 18px;"></div>'
+            '<div style="text-align:center;flex:1;">'
+            '<div style="width:28px;height:28px;border-radius:50%;background:#F2F6F8;border:2px solid #D8E2E7;'
+            'color:#7A8B93;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;">2</div>'
+            '<div style="font-size:12px;color:#7A8B93;margin-top:4px;">Optional details</div></div>'
+            '<div style="flex:0 0 auto;width:40px;height:2px;background:#D8E2E7;margin:0 -4px 18px;"></div>'
+            '<div style="text-align:center;flex:1;">'
+            '<div style="width:28px;height:28px;border-radius:50%;background:#F2F6F8;border:2px solid #D8E2E7;'
+            'color:#7A8B93;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;">3</div>'
+            '<div style="font-size:12px;color:#7A8B93;margin-top:4px;">Results</div></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         with st.expander("Basic check", expanded=True):
             st.write("Just a few values — fill what you know, leave the rest blank.")
             c1, c2 = st.columns(2)
