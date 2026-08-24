@@ -566,6 +566,31 @@ body {
 }
 .stMultiSelect [data-baseweb="tag"] { background: #0E7C86 !important; }
 
+/* Landing page */
+.landing-hero { text-align: center; padding: 48px 20px 32px; }
+.landing-hero h1 { font-size: 34px; font-weight: 700; color: #16242B; margin: 0 0 8px; letter-spacing: -0.5px; }
+.landing-hero .sub { font-size: 17px; color: #7A8B93; margin: 0 auto 36px; max-width: 520px; line-height: 1.5; }
+.landing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin: 0 auto 32px; max-width: 720px; }
+.landing-card {
+    background: #FFFFFF; border: 1px solid #E3EBEF; border-radius: 16px;
+    padding: 28px 18px; text-align: center; cursor: pointer;
+    transition: all 0.2s ease; text-decoration: none; display: block;
+}
+.landing-card:hover { border-color: #0E7C86; box-shadow: 0 8px 24px rgba(14,124,134,0.12); transform: translateY(-2px); }
+.landing-card .icon { font-size: 38px; margin-bottom: 14px; display: block; }
+.landing-card h3 { margin: 0 0 6px; font-size: 16px; color: #16242B; font-weight: 600; }
+.landing-card p { margin: 0; font-size: 13px; color: #7A8B93; line-height: 1.4; }
+.landing-quick { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-bottom: 28px; }
+.landing-pill {
+    background: #F2F6F8; border: 1px solid #E3EBEF; border-radius: 999px;
+    padding: 8px 16px; font-size: 13px; color: #41565F; cursor: pointer;
+    transition: all 0.15s ease; text-decoration: none;
+}
+.landing-pill:hover { background: #0E7C86; color: #FFFFFF; border-color: #0E7C86; }
+.back-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.back-bar button { background: #F2F6F8; border: 1px solid #E3EBEF; border-radius: 8px; padding: 6px 14px; font-size: 13px; color: #41565F; cursor: pointer; font-weight: 500; }
+.back-bar button:hover { background: #0E7C86; color: #FFFFFF; border-color: #0E7C86; }
+
 /* Hero tag + step strip */
 .hero-tag {
     display: inline-block; background: rgba(255,255,255,0.18); padding: 3px 11px;
@@ -718,50 +743,66 @@ def main():
     if "ai_messages" not in st.session_state:
         st.session_state.ai_messages = []
 
-    hero_art = hero_svg_data_uri()
-    st.markdown(
-        '<div class="hero">'
-        '<div class="hero-badge">🩺</div>'
-        '<div style="position: relative; z-index: 1; flex: 1;">'
-        '<div class="hero-tag">AI-powered clinical screening</div>'
-        '<h1>Diabetes Risk Intelligence</h1>'
-        '<p>Know your diabetes risk in minutes — upload a report, chat with the assistant, '
-        'or answer a few friendly questions. No white coat required. 😊</p>'
-        '</div>'
-        f'<img class="hero-art" src="{hero_art}" alt="animated heartbeat" />'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+    if "page" not in st.session_state:
+        st.session_state.page = "home"
+    page = st.session_state.page
 
-    st.caption("💡 Tip of the day: " + random.choice(TIP_OF_DAY))
+    if page == "home":
+        # ---- Landing page ----
+        st.markdown(
+            '<div class="landing-hero">'
+            '<h1>Diabetes Risk Intelligence</h1>'
+            '<p class="sub">Understand your health measurements, identify risk factors, '
+            'and know what to check next.</p>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
-    st.markdown(
-        '<div class="trust-strip">'
-        '<div class="trust-pill">🔒 Private — your data stays on your device</div>'
-        '<div class="trust-pill">🏥 Based on WHO / IDF guidance</div>'
-        '<div class="trust-pill">🤖 AI-agent screening (Gemini)</div>'
-        '<div class="trust-pill">⚕️ Screening only — not a diagnosis</div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            if st.button("Check My Health", key="home_check", use_container_width=True):
+                st.session_state.page = "check"
+                st.rerun()
+        with c2:
+            if st.button("Upload Medical Report", key="home_report", use_container_width=True):
+                st.session_state.page = "report"
+                st.rerun()
+        with c3:
+            if st.button("Ask AI Assistant", key="home_ai", use_container_width=True):
+                st.session_state.page = "assistant"
+                st.rerun()
 
-    st.markdown(
-        '<div class="step-strip">'
-        '<div class="step-card"><div class="step-num">1</div><h4>Import a report</h4>'
-        '<p>Upload a PDF or photo of a blood test — values are read automatically (OCR).</p></div>'
-        '<div class="step-card"><div class="step-num">2</div><h4>Talk to the assistant</h4>'
-        '<p>No test? Answer simple lifestyle questions — no lab values required.</p></div>'
-        '<div class="step-card"><div class="step-num">3</div><h4>Get your risk</h4>'
-        '<p>FINDRISC score + model estimate, with an AI interpretation and next steps.</p></div>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
+        st.markdown(
+            '<div class="landing-grid">'
+            '<div class="landing-card" style="pointer-events:none;">'
+            '<span class="icon">🩸</span><h3>Glucose</h3>'
+            '<p>Fasting, post-meal, HbA1c, OGTT</p></div>'
+            '<div class="landing-card" style="pointer-events:none;">'
+            '<span class="icon">🫀</span><h3>Blood Pressure</h3>'
+            '<p>SBP / DBP with OR-logic</p></div>'
+            '<div class="landing-card" style="pointer-events:none;">'
+            '<span class="icon">🧪</span><h3>Lab Report</h3>'
+            '<p>Upload PDF or image — OCR reads it</p></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
-    tab1, tab2, tab3 = st.tabs(
-        ["Medical Report", "Quick Health Check", "AI Clinical Assistant"])
+        st.markdown(
+            '<div style="text-align:center;margin-top:8px;">'
+            '<span style="font-size:13px;color:#7A8B93;">Screening only — not a diagnosis &nbsp;·&nbsp; '
+            'Based on ADA 2026 &amp; AHA/ACC 2025 &nbsp;·&nbsp; No registration required</span>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
-    # ---------------- Tab 1: Medical Report (primary) ----------------
-    with tab1:
+    else:
+        # ---- Module pages with back button ----
+        if st.button("← Home", key="back_home"):
+            st.session_state.page = "home"
+            st.rerun()
+
+    # ---------------- Module: Medical Report ----------------
+    if page == "report":
         st.subheader("Import lab report (PDF / image)")
         st.write("Upload a blood test report — **PDF, photo, or scanned image** (PNG/JPG). "
                  "Values are read automatically (OCR) and a risk assessment is generated instantly, "
@@ -1002,8 +1043,8 @@ def main():
                     st.warning("Inconclusive — " + outcome["detail"])
                     skip = st.button("Assess anyway (low confidence)", type="secondary")
 
-    # ---------------- Tab 2: Quick Health Check ----------------
-    with tab2:
+    # ---------------- Module: Quick Health Check ----------------
+    if page == "check":
         st.subheader("Quick Health Check")
         st.write("A fast screen from a few self-known values. Clinical rules run locally "
                  "and deterministically; the AI only explains the result. This is screening, "
@@ -1176,8 +1217,8 @@ def main():
                 {"Reading": ">180 and/or >120 + symptoms", "Category": "Emergency", "Status": "🔴 Emergency"},
             ]))
 
-    # ---------------- Tab 3: AI Clinical Assistant ----------------
-    with tab3:
+    # ---------------- Module: AI Clinical Assistant ----------------
+    if page == "assistant":
         st.subheader("AI Clinical Assistant")
         tool = st.radio("Choose a tool", ["Chat", "Enrich patient data", "Web research"])
 
