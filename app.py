@@ -1116,8 +1116,10 @@ def main():
                                          "after_meal_glucose_mg_dl": eff_pp,
                                          "hba1c_pct": eff_a1c},
                                         ocr_text=text, client=ai)
-                                except Exception:
+                                except Exception as e:
                                     comb = ({}, [], "", [])
+                                    st.warning("AI validation unavailable — results are based on OCR only. "
+                                               "Try again or check your API key.")
                             st.session_state["_rep_comb"] = (comb_key, comb)
                         ai_vals2, corrections2, expl, next_steps = comb
                         if corrections2:
@@ -1487,12 +1489,17 @@ def main():
                     "red_flags": [f["message"] for f in ev["red_flags"]],
                 }
                 with st.spinner("Step 3/3 — AI generating explanation..."):
-                    explain = chat_agent([{"role": "user", "content":
-                        "Explain this screening summary to the patient in 2-4 plain, warm "
-                        "sentences. Do NOT diagnose. Highlight any urgent flag. Summary: "
-                        + json.dumps(summary)}], client=ai)
-                st.markdown("#### AI explanation")
-                st.write(explain)
+                    try:
+                        explain = chat_agent([{"role": "user", "content":
+                            "Explain this screening summary to the patient in 2-4 plain, warm "
+                            "sentences. Do NOT diagnose. Highlight any urgent flag. Summary: "
+                            + json.dumps(summary)}], client=ai)
+                    except Exception:
+                        explain = ""
+                        st.info("AI explanation unavailable — check the results above for your screening.")
+                if explain:
+                    st.markdown("#### AI explanation")
+                    st.write(explain)
 
         with st.expander("Glucose reference (mg/dL)"):
             st.table(pd.DataFrame([
