@@ -1321,10 +1321,23 @@ def main():
             elif not glucose_rules and not bp_rule and not bmi_rule and not lipid_rules:
                 st.info("No measurements provided — add values above to see your result.")
 
-            # ---- Red flags ----
+            # ---- §19 Red-flag emergency banner ----
             if ev["red_flags"]:
-                for f in ev["red_flags"]:
-                    st.error(f"🚨 {f['message']}")
+                flags_html = "".join(
+                    f'<div style="padding:4px 0;font-size:14px;">🚨 {f["message"]}</div>'
+                    for f in ev["red_flags"]
+                )
+                st.markdown(
+                    f'<div style="background:#FDECEA;border:2px solid #C0392B;border-radius:12px;'
+                    f'padding:16px 20px;margin:0 0 16px;">'
+                    f'<div style="font-size:15px;font-weight:700;color:#C0392B;margin-bottom:6px;">'
+                    f'⚠ URGENT — Seek medical attention</div>'
+                    f'{flags_html}'
+                    f'<div style="font-size:12px;color:#7A8B93;margin-top:6px;">'
+                    f'These symptoms combined with a high reading can indicate a medical emergency.</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
             # ---- ML score ----
             if ml:
