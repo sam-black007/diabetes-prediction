@@ -547,6 +547,11 @@ body {
   background-color: #EFF5F7;
   background-image: radial-gradient(rgba(14,124,134,0.12) 1.4px, transparent 1.4px);
   background-size: 22px 22px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #16242B;
+}
 }
 .stApp,
 [data-testid="stAppViewContainer"] { background: transparent; }
