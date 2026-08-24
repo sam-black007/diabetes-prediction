@@ -757,8 +757,8 @@ def main():
         unsafe_allow_html=True,
     )
 
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["Medical Report", "Guided Intake", "Quick Health Check", "AI Clinical Assistant"])
+    tab1, tab2, tab3 = st.tabs(
+        ["Medical Report", "Quick Health Check", "AI Clinical Assistant"])
 
     # ---------------- Tab 1: Medical Report (primary) ----------------
     with tab1:
@@ -1002,178 +1002,8 @@ def main():
                     st.warning("Inconclusive — " + outcome["detail"])
                     skip = st.button("Assess anyway (low confidence)", type="secondary")
 
-    # ---------------- Tab 2: Guided Intake (agent asks) ----------------
+    # ---------------- Tab 2: Quick Health Check ----------------
     with tab2:
-        st.subheader("Guided intake — talk to the assistant")
-        if ai.mode != "offline":
-            st.success(f"AI assistant online ({ai.mode})")
-        else:
-            st.warning("AI assistant is offline — " + ai.status_detail)
-        st.write("No forms to fill. Just answer the assistant's questions in your own words — "
-                 "it collects what it needs and runs the assessment for you.")
-
-        intake_mode = st.radio(
-            "How would you like to proceed?",
-            ["I have test results (lab values)", "No tests — assess from lifestyle"],
-            horizontal=True,
-        )
-
-        # ===== Lab mode: collect the 8 clinical features =====
-        if intake_mode.startswith("I have test"):
-            if "intake_history" not in st.session_state:
-                st.session_state.intake_history = []
-                st.session_state.intake_collected = {}
-            collected = st.session_state.intake_collected
-            done = len(collected)
-            st.progress(done / len(INTAKE_FIELDS))
-            st.caption(f"Collected {done}/{len(INTAKE_FIELDS)} clinical measurements")
-            if collected:
-                cols = st.columns(min(len(collected), 4))
-                for i, (k, v) in enumerate(collected.items()):
-                    cols[i % 4].metric(k, f"{v:g}")
-
-            if ai.mode == "offline":
-                st.info("Conversational intake needs the AI provider. Enter values manually:")
-                vals = {f: st.number_input(f, value=0.0, step=1.0) for f in INTAKE_FIELDS}
-                if st.button("Assess", type="primary"):
-                    res, need = ai_assess(vals, ai)
-                    clinical = clinical_stage(None, vals.get("Glucose") or None, None)
-                    if need:
-                        st.error("The AI agent needs: " + ", ".join(need) +
-                                 ". Please enter them above (use 0 only if truly unknown).")
-                    else:
-                        pred = int(res["verdict"] == "diabetic")
-                        prob = float(res.get("probability") or 0.5)
-                        ml = predict_with_model(vals, model, medians, threshold) if model else None
-                        show_result(pred, prob, vals, threshold, clinical=clinical, ml=ml)
-                        st.markdown("#### AI agent verdict — why")
-                        st.write(res.get("reasoning") or "(no reasoning returned)")
-            else:
-                for m in st.session_state.intake_history:
-                    with st.chat_message(m["role"]):
-                        st.write(m["content"])
-                if prompt := st.chat_input("Your answer..."):
-                    st.session_state.intake_history.append({"role": "user", "content": prompt})
-                    with st.chat_message("user"):
-                        st.write(prompt)
-                    with st.chat_message("assistant"):
-                        with st.spinner("Assistant is asking..."):
-                            sys_intake = (
-                                "You are a warm, professional clinical intake assistant for a diabetes "
-                                "risk screening. Collect these 8 values from the patient, ONE question at "
-                                "a time: Pregnancies, Glucose (after-meal blood sugar, mg/dL), BloodPressure "
-                                "(systolic), SkinThickness, Insulin, BMI, DiabetesPedigreeFunction (family "
-                                "history score 0-2.5), Age. Briefly explain why each matters. Be concise and "
-                                "friendly. Once all values are provided, tell the patient you will assess the risk."
-                            )
-                            reply = chat_agent(st.session_state.intake_history, ai, system=sys_intake)
-                        st.write(reply)
-                    st.session_state.intake_history.append({"role": "assistant", "content": reply})
-                    with st.spinner("Updating record..."):
-                        new = extract_patient_fields(st.session_state.intake_history, ai)
-                    if new:
-                        st.session_state.intake_collected.update(new)
-                    st.rerun()
-                if st.button("Run risk assessment", type="primary"):
-                    values = {f: st.session_state.intake_collected.get(f, 0) for f in INTAKE_FIELDS}
-                    clinical = clinical_stage(None, values.get("Glucose") or None, None)
-                    with st.spinner("AI agent is assessing..."):
-                        res, need = ai_assess(values, ai)
-                    if need:
-                        st.error("The assistant still needs: " + ", ".join(need) +
-                                 ". Please answer its questions above first.")
-                    else:
-                        pred = int(res["verdict"] == "diabetic")
-                        prob = float(res.get("probability") or 0.5)
-                        ml = predict_with_model(values, model, medians, threshold) if model else None
-                        show_result(pred, prob, values, threshold, clinical=clinical, ml=ml)
-                        st.markdown("#### AI agent verdict — why")
-                        st.write(res.get("reasoning") or "(no reasoning returned)")
-                        if res.get("missing"):
-                            st.info("For a more confident result, also provide: "
-                                    + ", ".join(res["missing"]) + ".")
-                        if res.get("next_steps"):
-                            st.markdown("#### Next steps")
-                            for s_ in res["next_steps"]:
-                                st.write(f"- {s_}")
-
-        # ===== Lifestyle mode: no lab tests required =====
-        else:
-            st.write("Perfect if you don't know your BMI or blood sugar. The assistant asks simple "
-                     "lifestyle questions (age, height, weight, activity, diet, family history) and "
-                     "estimates your risk — **no blood test needed**.")
-            if "life_history" not in st.session_state:
-                st.session_state.life_history = []
-                st.session_state.life_collected = {}
-
-            life = st.session_state.life_collected
-            needed = ["age", "sex", "height_cm", "weight_kg", "activity_high", "veg_daily", "bp_issue", "high_sugar_history", "family_history"]
-            done = sum(1 for k in needed if k in life)
-            st.progress(done / len(needed))
-            st.caption(f"Collected {done}/{len(needed)} lifestyle details")
-            if life:
-                chips = "".join(
-                    f'<span class="chip"><b>{k}:</b> {life[k]}</span>' for k in needed if k in life
-                )
-                st.markdown(f'<div class="chip-row">{chips}</div>', unsafe_allow_html=True)
-
-            symptoms = st.multiselect(
-                "Any of these symptoms? (helps flag urgent cases)",
-                options=list(RED_FLAG_SYMPTOMS.keys()),
-                format_func=lambda s: RED_FLAG_SYMPTOMS[s],
-            )
-
-            if ai.mode == "offline":
-                st.info("Conversational intake needs the AI provider (Qwen). Enter details manually:")
-                age = st.number_input("Age", 0, 120, 45)
-                sex = st.selectbox("Sex", ["male", "female"])
-                h = st.number_input("Height (cm)", 100, 220, 165)
-                w = st.number_input("Weight (kg)", 30, 250, 70)
-                waist = st.number_input("Waist (cm, optional)", 0, 200, 0)
-                activity_high = st.checkbox("Exercise >=30 min most days")
-                veg_daily = st.checkbox("Eat vegetables/fruit daily")
-                bp_issue = st.checkbox("High BP / on BP medication")
-                high_sugar = st.checkbox("Ever told high blood sugar")
-                fh = st.selectbox("Family history", ["none", "young", "older"])
-                if st.button("Assess lifestyle risk", type="primary"):
-                    life = {"age": age, "sex": sex, "height_cm": h, "weight_kg": w,
-                            "waist_cm": waist or None, "activity_high": activity_high,
-                            "veg_daily": veg_daily, "bp_issue": bp_issue,
-                            "high_sugar_history": high_sugar, "family_history": fh}
-                    run_lifestyle_assessment(life, symptoms, model, scaler, medians, threshold)
-            else:
-                for m in st.session_state.life_history:
-                    with st.chat_message(m["role"]):
-                        st.write(m["content"])
-                if prompt := st.chat_input("Your answer..."):
-                    st.session_state.life_history.append({"role": "user", "content": prompt})
-                    with st.chat_message("user"):
-                        st.write(prompt)
-                    with st.chat_message("assistant"):
-                        with st.spinner("Assistant is asking..."):
-                            sys_life = (
-                                "You are a warm, professional lifestyle-intake assistant for a diabetes "
-                                "risk screen that needs NO lab tests. Collect these details from the patient, "
-                                "ONE question at a time: age, sex, height, weight, waist (optional), whether "
-                                "they exercise 30+ min most days, whether they eat vegetables/fruit daily, "
-                                "whether they have high blood pressure or take BP medication, whether they were "
-                                "ever told they had high blood sugar, and family history of diabetes (none / "
-                                "relative diagnosed under 50 / relative diagnosed 50+ or on medication). "
-                                "Never ask for blood sugar numbers. Be friendly and concise."
-                            )
-                            reply = chat_agent(st.session_state.life_history, ai, system=sys_life)
-                        st.write(reply)
-                    st.session_state.life_history.append({"role": "assistant", "content": reply})
-                    with st.spinner("Updating record..."):
-                        new = extract_lifestyle(st.session_state.life_history, ai)
-                    if new:
-                        st.session_state.life_collected.update(new)
-                    st.rerun()
-                if st.button("Assess lifestyle risk", type="primary"):
-                    run_lifestyle_assessment(life, symptoms, model, scaler, medians, threshold)
-
-    # ---------------- Tab 3: AI Clinical Assistant ----------------
-    with tab3:
         st.subheader("Quick Health Check")
         st.write("A fast screen from a few self-known values. Clinical rules run locally "
                  "and deterministically; the AI only explains the result. This is screening, "
@@ -1346,16 +1176,9 @@ def main():
                 {"Reading": ">180 and/or >120 + symptoms", "Category": "Emergency", "Status": "🔴 Emergency"},
             ]))
 
-    with tab4:
+    # ---------------- Tab 3: AI Clinical Assistant ----------------
+    with tab3:
         st.subheader("AI Clinical Assistant")
-        provider = ai.mode if ai.mode != "offline" else "Offline fallback"
-        if ai.mode == "offline":
-            st.warning("AI assistant is offline — " + ai.status_detail)
-        else:
-            st.caption(f"AI engine: **{provider}** — conversational analysis, patient-context "
-                       "enrichment, and live guideline research.")
-        st.caption("🔒 Your messages go to the AI provider (Alibaba MaaS) only to generate a reply; "
-                   "this app does not store them.")
         tool = st.radio("Choose a tool", ["Chat", "Enrich patient data", "Web research"])
 
         if tool == "Chat":
