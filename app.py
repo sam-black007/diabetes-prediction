@@ -1256,8 +1256,15 @@ def main():
                 trig=q_trig if q_trig else None)
 
             bmi_val = bmi_rule["value"] if (bmi_rule and bmi_rule["category"] != "missing") else 0
-            ml_in = {"Age": age or 0, "Glucose": fast if fast else 0,
-                     "BloodPressure": sbp if sbp else 0, "BMI": bmi_val}
+            ml_in = {}
+            if age and age > 0:
+                ml_in["Age"] = age
+            if fast and fast > 0:
+                ml_in["Glucose"] = fast
+            if sbp and sbp > 0:
+                ml_in["BloodPressure"] = sbp
+            if bmi_val and bmi_val > 0:
+                ml_in["BMI"] = bmi_val
             ml = predict_with_model(ml_in, model, medians, threshold) if model else None
 
             ev = aggregate_evidence(

@@ -20,7 +20,7 @@ PIMA_FEATURES = [
 ]
 
 # In PIMA, 0 for these clinical fields actually means "missing".
-_ZERO_MEANS_MISSING = {"Glucose", "BloodPressure", "SkinThickness", "Insulin", "BMI"}
+_ZERO_MEANS_MISSING = {"Glucose", "BloodPressure", "SkinThickness", "Insulin", "BMI", "Age"}
 
 
 def predict_with_model(values, model, medians=None, threshold=0.5):
