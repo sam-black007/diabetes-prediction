@@ -1158,26 +1158,117 @@ def main():
                 glucose_rules=glucose_rules, bp_rule=bp_rule, bmi_rule=bmi_rule,
                 lipid_rules=lipid_rules, ml=ml)
 
-            st.markdown("### HEALTH SCREENING SUMMARY")
-            for r in glucose_rules:
-                st.markdown(f"{r['color']} **Glucose ({r['measurement_type']})**: {r['status']}")
-            if not glucose_rules:
-                st.markdown("🟢 Glucose: not provided")
+            # ---- Headline ----
+            all_sevs = [r["severity"] for r in glucose_rules]
             if bp_rule:
-                st.markdown(f"{bp_rule['color']} **Blood pressure**: {bp_rule['status']}")
+                all_sevs.append(bp_rule["severity"])
             if bmi_rule:
-                st.markdown(f"{bmi_rule['color']} **BMI**: {bmi_rule['status']}")
+                all_sevs.append(bmi_rule["severity"])
             for r in lipid_rules:
-                st.markdown(f"{r['color']} **{r['measurement_type']}**: {r['status']}")
-            if ml:
-                st.markdown(f"🟣 **ML screening model**: model-estimated risk "
-                            f"{ml['score']:.0%} (research/baseline only)")
+                all_sevs.append(r["severity"])
+            worst_sev = max(all_sevs, key=lambda s: severity_rank(s)) if all_sevs else "normal"
+            headline_map = {
+                "emergency": ("🚨 Critical — seek medical attention", "#C0392B"),
+                "critical":  ("🚨 Critical — seek medical attention", "#C0392B"),
+                "severe":    ("🔴 Very high risk", "#C0392B"),
+                "high":      ("🟠 Elevated risk", "#E67E22"),
+                "stage2":    ("🟠 Elevated risk", "#E67E22"),
+                "stage1":    ("🟡 Attention needed", "#F9A825"),
+                "moderate":  ("🟡 Attention needed", "#F9A825"),
+                "elevated":  ("🟡 Attention needed", "#F9A825"),
+                "low":       ("🟠 Low blood pressure detected", "#E67E22"),
+                "normal":    ("🟢 Within normal range", "#2E7D32"),
+            }
+            hl_text, hl_color = headline_map.get(worst_sev, ("Screening result", "#41565F"))
+            st.markdown(
+                f'<div style="background:#fff;border:1px solid #E3EBEF;border-left:4px solid {hl_color};'
+                f'border-radius:12px;padding:18px 20px;margin:8px 0 18px;">'
+                f'<div style="font-size:12px;color:#7A8B93;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:4px;">Your screening result</div>'
+                f'<div style="font-size:20px;font-weight:700;color:{hl_color};">{hl_text}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
+            # ---- Measurements ----
+            def _m_row(label, value, unit, status, color, source=""):
+                src = f'<span style="font-size:11px;color:#7A8B93;margin-left:6px;">({source})</span>' if source else ""
+                return (
+                    f'<div style="display:flex;justify-content:space-between;align-items:center;'
+                    f'padding:10px 0;border-bottom:1px solid #F0F2F4;">'
+                    f'<div><div style="font-size:13px;color:#7A8B93;">{label}{src}</div>'
+                    f'<div style="font-size:18px;font-weight:600;color:#16242B;">{value} <span style="font-size:13px;color:#7A8B93;">{unit}</span></div></div>'
+                    f'<div style="font-size:13px;font-weight:600;color:{color};">{status}</div>'
+                    f'</div>'
+                )
+            rows = []
+            for r in glucose_rules:
+                rows.append(_m_row(
+                    f"Glucose ({r['measurement_type']})", r["value"], "mg/dL" if r["measurement_type"] != "hba1c" else "%",
+                    r["status"], r["color"], r.get("source", "")))
+            if bp_rule:
+                rows.append(_m_row(
+                    "Blood pressure", f"{sbp}/{dbp}" if sbp and dbp else str(sbp or dbp),
+                    "mmHg", bp_rule["status"], bp_rule["color"], bp_rule.get("source", "")))
+            if bmi_rule:
+                rows.append(_m_row(
+                    "BMI", f'{bmi_rule["value"]:.1f}', "kg/m²",
+                    bmi_rule["status"], bmi_rule["color"]))
+            for r in lipid_rules:
+                rows.append(_m_row(
+                    r["measurement_type"], r["value"], "mg/dL",
+                    r["status"], r["color"], r.get("source", "")))
+            if rows:
+                st.markdown(
+                    '<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
+                    'padding:8px 18px;margin:0 0 16px;">'
+                    + "".join(rows) + '</div>',
+                    unsafe_allow_html=True,
+                )
+            elif not glucose_rules and not bp_rule and not bmi_rule and not lipid_rules:
+                st.info("No measurements provided — add values above to see your result.")
+
+            # ---- Red flags ----
             if ev["red_flags"]:
-                st.error("🚨 URGENT FLAGS — seek medical attention")
                 for f in ev["red_flags"]:
-                    st.write(f"- {f['message']}")
+                    st.error(f"🚨 {f['message']}")
 
+            # ---- ML score ----
+            if ml:
+                ml_label = "Elevated" if ml["score"] >= threshold else "Lower"
+                ml_color = "#E67E22" if ml["score"] >= threshold else "#2E7D32"
+                st.markdown(
+                    f'<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
+                    f'padding:14px 18px;margin:0 0 16px;">'
+                    f'<div style="font-size:12px;color:#7A8B93;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">ML model estimate</div>'
+                    f'<div style="font-size:22px;font-weight:700;color:{ml_color};">{ml["score"]:.0%} — {ml_label}</div>'
+                    f'<div style="font-size:12px;color:#7A8B93;">Research/baseline only — not a diagnosis</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ---- Next steps ----
+            next_steps = []
+            if glucose_rules:
+                worst_g = max(glucose_rules, key=lambda r: severity_rank(r["severity"]))
+                if worst_g["severity"] in ("high", "critical", "emergency", "stage2"):
+                    next_steps.append("Confirm with a fasting glucose or HbA1c test")
+            if bp_rule and bp_rule["severity"] in ("high", "stage2", "emergency", "severe"):
+                next_steps.append("Monitor your blood pressure regularly")
+            if bmi_rule and bmi_rule["severity"] in ("high", "moderate"):
+                next_steps.append("Consider weight management — even small changes help")
+            if any(r["severity"] in ("high", "critical") for r in lipid_rules):
+                next_steps.append("Discuss cholesterol results with your doctor")
+            if not next_steps:
+                next_steps.append("Keep up your current healthy habits")
+            next_steps.append("Discuss results with a clinician for personalised advice")
+            st.markdown(
+                '<div style="font-size:14px;font-weight:600;color:#16242B;margin:8px 0 6px;">What to do next</div>'
+                + "".join(f'<div style="font-size:13px;color:#41565F;padding:4px 0;">{i+1}. {s}</div>'
+                           for i, s in enumerate(next_steps)),
+                unsafe_allow_html=True,
+            )
+
+            # ---- Missing data ----
             missing = []
             if fast is None and hba1c is None:
                 missing.append("fasting glucose or HbA1c")
