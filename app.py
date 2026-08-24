@@ -1161,15 +1161,13 @@ def main():
                                            value=None, step=0.5, key="qc_weight")
                 q_height = st.number_input("Height (cm)", min_value=50.0, max_value=260.0,
                                            value=None, step=0.5, key="qc_height")
-                q_sbp = st.number_input("Systolic BP (mmHg, optional)", min_value=50,
-                                        max_value=300, value=None, step=1, key="qc_sbp")
+                q_bp = st.text_input("Blood pressure (e.g. 120/80)", key="qc_bp",
+                                     placeholder="120/80")
             with c2:
                 q_fast = st.number_input("Fasting glucose (mg/dL)", min_value=20,
                                          max_value=600, value=None, step=1, key="qc_fast")
                 q_post = st.number_input("2-hour post-meal glucose (mg/dL)", min_value=20,
                                          max_value=600, value=None, step=1, key="qc_post")
-                q_dbp = st.number_input("Diastolic BP (mmHg, optional)", min_value=30,
-                                        max_value=200, value=None, step=1, key="qc_dbp")
         with st.expander("Advanced / Diagnostic (for more accurate results)"):
             st.write("Add any you have — each one sharpens the screen.")
             c3, c4 = st.columns(2)
@@ -1205,8 +1203,16 @@ def main():
             fast = q_fast if q_fast else None
             post = q_post if q_post else None
             hba1c = q_hba1c if q_hba1c else None
-            sbp = q_sbp if q_sbp else None
-            dbp = q_dbp if q_dbp else None
+            # Parse BP from "120/80" text input
+            sbp, dbp = None, None
+            if q_bp and q_bp.strip():
+                bp_parts = q_bp.replace(" ", "").split("/")
+                if len(bp_parts) == 2:
+                    try:
+                        sbp = int(bp_parts[0])
+                        dbp = int(bp_parts[1])
+                    except ValueError:
+                        pass
             ogtt = q_ogtt if q_ogtt else None
             rand = q_rand if q_rand else None
 
