@@ -872,12 +872,49 @@ def main():
                 with st.expander("Show OCR text"):
                     st.text(text[:1500])
             else:
-                st.success("Report read — OCR complete. Review the values, then assess.")
-                n_real = sum(
-                    1 for _l, _k, pk, _s2 in REPORT_FIELDS
-                    if parsed.get(pk) is not None
+                st.markdown(
+                    '<div style="background:#E6F4EA;border:1px solid #B7E1C7;border-radius:10px;'
+                    'padding:12px 16px;margin-bottom:14px;font-size:14px;color:#1E7A3C;font-weight:500;">'
+                    'Report analyzed — review detected values below, then adjust if needed.</div>',
+                    unsafe_allow_html=True,
                 )
-                st.caption(f"OCR coverage {n_real}/{len(REPORT_FIELDS)} fields read from the report.")
+                # Per-field confidence indicators
+                conf_rows = []
+                for label, _sk, pk, ak, _step in REPORT_FIELDS:
+                    pv = parsed.get(pk)
+                    av = ai_vals.get(ak)
+                    if pv is not None and av is not None:
+                        if _reads_conflict(pv, av):
+                            icon, note = "🟡", "parser & AI disagree — please verify"
+                        else:
+                            icon, note = "🟢", "clearly detected"
+                        val = f"{pv:g}"
+                    elif pv is not None:
+                        icon, note = "🟢", "detected"
+                        val = f"{pv:g}"
+                    elif av is not None:
+                        icon, note = "🟡", "AI estimated — please verify"
+                        val = f"{av:g}"
+                    else:
+                        icon, note = "🔴", "could not read"
+                        val = "—"
+                    conf_rows.append(
+                        f'<div style="display:flex;justify-content:space-between;align-items:center;'
+                        f'padding:7px 0;border-bottom:1px solid #F0F2F4;">'
+                        f'<div style="font-size:13px;color:#41565F;">{icon} {label}</div>'
+                        f'<div style="font-size:14px;font-weight:600;color:#16242B;">{val}'
+                        f' <span style="font-size:11px;color:#7A8B93;font-weight:400;">{note}</span></div>'
+                        f'</div>'
+                    )
+                n_found = sum(1 for r in conf_rows if "🟢" in r or "🟡" in r)
+                st.markdown(
+                    f'<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
+                    f'padding:12px 18px;margin:0 0 14px;">'
+                    f'<div style="font-size:13px;color:#7A8B93;margin-bottom:6px;">'
+                    f'{n_found}/{len(conf_rows)} values detected</div>'
+                    + "".join(conf_rows) + '</div>',
+                    unsafe_allow_html=True,
+                )
 
                 conflicts = [
                     (label, key, rv, av)
