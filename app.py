@@ -916,6 +916,30 @@ def main():
                     unsafe_allow_html=True,
                 )
 
+                # ---- §25 Review detected values ----
+                st.markdown(
+                    '<div style="font-size:14px;font-weight:600;color:#16242B;margin:12px 0 8px;">'
+                    'Review detected values — adjust if OCR read incorrectly</div>',
+                    unsafe_allow_html=True,
+                )
+                _rev_cols = st.columns(3)
+                _rev_idx = 0
+                for label, key, pk, ak, step in REPORT_FIELDS:
+                    pv = parsed.get(pk)
+                    av = ai_vals.get(ak)
+                    current = st.session_state.get(key)
+                    val_to_show = current if current not in (None, 0) else (pv if pv is not None else av)
+                    with _rev_cols[_rev_idx % 3]:
+                        new_val = st.number_input(
+                            label, min_value=0.0, max_value=9999.0,
+                            value=float(val_to_show) if val_to_show else 0.0,
+                            step=step, key=f"_rev_{key}",
+                            help="Detected from report — edit if incorrect",
+                        )
+                        if new_val and new_val > 0:
+                            st.session_state[key] = new_val
+                    _rev_idx += 1
+
                 conflicts = [
                     (label, key, rv, av)
                     for label, key, _pk, _ak, _step in REPORT_FIELDS
