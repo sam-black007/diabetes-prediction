@@ -1179,18 +1179,22 @@ def main():
                  "and deterministically; the AI only explains the result. This is screening, "
                  "not a diagnosis.")
         with st.expander("Basic check", expanded=True):
-            st.write("Just 4 values — you probably know these already.")
+            st.write("Just a few values — fill what you know, leave the rest blank.")
             c1, c2 = st.columns(2)
             with c1:
                 q_weight = st.number_input("Weight (kg)", min_value=2.0, max_value=400.0,
                                            value=None, step=0.5, key="qc_weight")
                 q_height = st.number_input("Height (cm)", min_value=50.0, max_value=260.0,
                                            value=None, step=0.5, key="qc_height")
+                q_sbp = st.number_input("Systolic BP (mmHg, optional)", min_value=50,
+                                        max_value=300, value=None, step=1, key="qc_sbp")
             with c2:
                 q_fast = st.number_input("Fasting glucose (mg/dL)", min_value=20,
                                          max_value=600, value=None, step=1, key="qc_fast")
                 q_post = st.number_input("2-hour post-meal glucose (mg/dL)", min_value=20,
                                          max_value=600, value=None, step=1, key="qc_post")
+                q_dbp = st.number_input("Diastolic BP (mmHg, optional)", min_value=30,
+                                        max_value=200, value=None, step=1, key="qc_dbp")
         with st.expander("Advanced / Diagnostic (for more accurate results)"):
             st.write("Add any you have — each one sharpens the screen.")
             c3, c4 = st.columns(2)
@@ -1198,10 +1202,6 @@ def main():
                 q_age = st.number_input("Age (years)", min_value=1, max_value=120,
                                         value=None, step=1, key="qc_age")
                 q_sex = st.radio("Sex", ["male", "female"], horizontal=True, key="qc_sex")
-                q_sbp = st.number_input("Systolic BP (mmHg)", min_value=50, max_value=300,
-                                        value=None, step=1, key="qc_sbp")
-                q_dbp = st.number_input("Diastolic BP (mmHg)", min_value=30, max_value=200,
-                                        value=None, step=1, key="qc_dbp")
                 q_hba1c = st.number_input("HbA1c (%)", min_value=3.0, max_value=16.0,
                                           value=None, step=0.1, key="qc_hba1c")
             with c4:
