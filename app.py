@@ -620,6 +620,21 @@ body {
     .landing-card h3 { font-size: 14px; }
 }
 
+/* Accessibility (§36-40) */
+:focus-visible {
+    outline: 3px solid #0E7C86;
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+.landing-card:focus-visible, .back-bar button:focus-visible {
+    outline: 3px solid #0E7C86;
+    outline-offset: 2px;
+}
+[role="button"]:focus-visible {
+    outline: 3px solid #0E7C86;
+    outline-offset: 2px;
+}
+
 /* Hero tag + step strip */
 .hero-tag {
     display: inline-block; background: rgba(255,255,255,0.18); padding: 3px 11px;
