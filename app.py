@@ -841,7 +841,7 @@ def main():
                 st.image(report, caption="Uploaded report photo", width=400)
             sig = (report.name, getattr(report, "size", None)) if report is not None else ("pasted", hash(pasted.strip()))
             if st.session_state.get("_rep_sig") != sig:
-                with st.spinner("Reading report (OCR)..."):
+                with st.spinner("Step 1/3 — Reading report with OCR..."):
                     text = ""
                     if report is not None:
                         text = extract_text_from_image(report) if is_image else extract_text_from_pdf(report)
@@ -1097,7 +1097,7 @@ def main():
                         cached = st.session_state.get("_rep_comb") or ()
                         comb = cached[1] if cached and cached[0] == comb_key else None
                         if not comb:
-                            with st.spinner("AI agent is reviewing the report..."):
+                            with st.spinner("Step 2/3 — AI agent validating detected values..."):
                                 try:
                                     comb = validate_and_explain_report(
                                         parsed, outcome,
@@ -1469,10 +1469,11 @@ def main():
                     "ml_score": round(ml["score"], 2) if ml else None,
                     "red_flags": [f["message"] for f in ev["red_flags"]],
                 }
-                explain = chat_agent([{"role": "user", "content":
-                    "Explain this screening summary to the patient in 2-4 plain, warm "
-                    "sentences. Do NOT diagnose. Highlight any urgent flag. Summary: "
-                    + json.dumps(summary)}], client=ai)
+                with st.spinner("Step 3/3 — AI generating explanation..."):
+                    explain = chat_agent([{"role": "user", "content":
+                        "Explain this screening summary to the patient in 2-4 plain, warm "
+                        "sentences. Do NOT diagnose. Highlight any urgent flag. Summary: "
+                        + json.dumps(summary)}], client=ai)
                 st.markdown("#### AI explanation")
                 st.write(explain)
 
