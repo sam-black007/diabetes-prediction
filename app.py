@@ -1203,10 +1203,11 @@ def main():
             fast = q_fast if q_fast else None
             post = q_post if q_post else None
             hba1c = q_hba1c if q_hba1c else None
-            # Parse BP from "120/80" text input
+            # Parse BP from "120/80" or "120\80" text input
             sbp, dbp = None, None
             if q_bp and q_bp.strip():
-                bp_parts = q_bp.replace(" ", "").split("/")
+                bp_text = q_bp.replace(" ", "").replace("\\", "/")
+                bp_parts = bp_text.split("/")
                 if len(bp_parts) == 2:
                     try:
                         sbp = int(bp_parts[0])
