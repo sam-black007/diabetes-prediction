@@ -1338,22 +1338,47 @@ def main():
                 unsafe_allow_html=True,
             )
 
-            # ---- Missing data ----
-            missing = []
-            if fast is None and hba1c is None:
-                missing.append("fasting glucose or HbA1c")
-            if not (sbp and dbp):
-                missing.append("both blood-pressure numbers")
-            if not (weight and height):
-                missing.append("weight & height (for BMI)")
-            if missing:
-                st.warning("For a fuller screen, also provide: " + ", ".join(missing) + ".")
-                if ai.mode != "offline":
-                    ask = chat_agent([{"role": "user", "content":
-                        f"The user did a quick health check but did not provide: "
-                        f"{', '.join(missing)}. Politely ask them to add those values. "
-                        f"2 sentences."}], client=ai)
-                    st.info(ask)
+            # ---- Completeness card (§22) ----
+            provided, missing = [], []
+            if fast is not None: provided.append("Fasting glucose")
+            else: missing.append("fasting glucose")
+            if hba1c is not None: provided.append("HbA1c")
+            elif fast is None: missing.append("fasting glucose or HbA1c")
+            if sbp is not None and dbp is not None: provided.append("Blood pressure")
+            elif sbp is None and dbp is None: missing.append("blood pressure")
+            if weight is not None and height is not None: provided.append("BMI")
+            else: missing.append("weight & height (for BMI)")
+            total = len(provided) + len(missing)
+            pct = int(len(provided) / total * 100) if total else 0
+            prov_html = "".join(
+                f'<span style="display:inline-block;background:#E6F4EA;color:#1E7A3C;border-radius:6px;'
+                f'padding:3px 10px;font-size:12px;font-weight:500;margin:2px 4px 2px 0;">✓ {v}</span>'
+                for v in provided
+            )
+            miss_html = "".join(
+                f'<span style="display:inline-block;background:#FFF3E0;color:#E65100;border-radius:6px;'
+                f'padding:3px 10px;font-size:12px;font-weight:500;margin:2px 4px 2px 0;">✗ {m}</span>'
+                for m in missing
+            )
+            bar_color = "#2E7D32" if pct >= 75 else ("#F9A825" if pct >= 50 else "#E65100")
+            st.markdown(
+                f'<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
+                f'padding:14px 18px;margin:0 0 16px;">'
+                f'<div style="font-size:12px;color:#7A8B93;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px;">Screen completeness</div>'
+                f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+                f'<div style="flex:1;height:6px;background:#F0F2F4;border-radius:3px;">'
+                f'<div style="width:{pct}%;height:100%;background:{bar_color};border-radius:3px;"></div></div>'
+                f'<div style="font-size:13px;font-weight:600;color:#16242B;">{pct}%</div></div>'
+                f'<div>{prov_html}{miss_html}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if missing and ai.mode != "offline":
+                ask = chat_agent([{"role": "user", "content":
+                    f"The user did a quick health check but did not provide: "
+                    f"{', '.join(missing)}. Politely ask them to add those values. "
+                    f"2 sentences."}], client=ai)
+                st.info(ask)
 
             st.caption("Screening only — not a diagnosis. Confirm with a clinician via "
                        "fasting glucose / HbA1c / OGTT.")
