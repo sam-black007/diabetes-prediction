@@ -1429,6 +1429,25 @@ def main():
 
         if tool == "Chat":
             st.write("Ask anything about diabetes risk, the screening features, or lifestyle.")
+            # Suggested prompts (§23)
+            if not st.session_state.ai_messages:
+                st.markdown(
+                    '<div style="font-size:13px;color:#7A8B93;margin-bottom:6px;">Try a question:</div>',
+                    unsafe_allow_html=True,
+                )
+                suggested = [
+                    "What does fasting glucose of 110 mean?",
+                    "How can I lower my risk?",
+                    "Is my blood pressure normal?",
+                    "What foods should I avoid?",
+                    "Do I need medication?",
+                ]
+                cols = st.columns(len(suggested))
+                for i, q in enumerate(suggested):
+                    with cols[i]:
+                        if st.button(q, key=f"sug_{i}", use_container_width=True):
+                            st.session_state.ai_messages.append({"role": "user", "content": q})
+                            st.rerun()
             report_img = st.file_uploader(
                 "Attach a lab-report photo (optional) — it is read via OCR, never sent as an image",
                 type=["png", "jpg", "jpeg"],
