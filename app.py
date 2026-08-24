@@ -1191,39 +1191,35 @@ def main():
             with c2:
                 q_fast = st.number_input("Fasting glucose (mg/dL)", min_value=20,
                                          max_value=600, value=None, step=1, key="qc_fast")
-                q_post = st.number_input("2-hour post-meal glucose (mg/dL)", min_value=20,
-                                         max_value=600, value=None, step=1, key="qc_post")
-                q_hba1c = st.number_input("HbA1c (%)", min_value=3.0, max_value=16.0,
-                                          value=None, step=0.1, key="qc_hba1c")
                 q_sbp = st.number_input("Systolic BP (mmHg)", min_value=50, max_value=300,
                                         value=None, step=1, key="qc_sbp")
                 q_dbp = st.number_input("Diastolic BP (mmHg)", min_value=30, max_value=200,
                                         value=None, step=1, key="qc_dbp")
-        with st.expander("Advanced / lab inputs (optional)"):
+        with st.expander("Advanced / Diagnostic (for more accurate results)"):
+            st.write("Add lab values below if you have them — each one sharpens the screen.")
             c3, c4 = st.columns(2)
             with c3:
+                q_post = st.number_input("2-hour post-meal glucose (mg/dL)", min_value=20,
+                                         max_value=600, value=None, step=1, key="qc_post")
+                q_hba1c = st.number_input("HbA1c (%)", min_value=3.0, max_value=16.0,
+                                          value=None, step=0.1, key="qc_hba1c")
                 q_ogtt = st.number_input("2-hour OGTT glucose (mg/dL)", min_value=20,
                                          max_value=600, value=None, step=1, key="qc_ogtt")
                 q_rand = st.number_input("Random glucose (mg/dL)", min_value=20,
                                          max_value=600, value=None, step=1, key="qc_rand")
             with c4:
-                q_hr = st.number_input("Heart rate (bpm)", min_value=30, max_value=220,
-                                       value=None, step=1, key="qc_hr")
-                q_waist = st.number_input("Waist circumference (cm)", min_value=40,
-                                          max_value=200, value=None, step=1, key="qc_waist")
                 q_ldl = st.number_input("LDL-C (mg/dL)", min_value=20, max_value=400,
                                         value=None, step=1, key="qc_ldl")
                 q_hdl = st.number_input("HDL-C (mg/dL)", min_value=10, max_value=150,
                                         value=None, step=1, key="qc_hdl")
                 q_trig = st.number_input("Triglycerides (mg/dL)", min_value=20,
                                          max_value=1000, value=None, step=1, key="qc_trig")
-
-        symptoms = st.multiselect(
-            "Any urgent symptoms now? (a high reading + symptoms can be an emergency)",
-            ["chest pain", "shortness of breath", "vision changes", "weakness/numbness",
-             "difficulty speaking", "altered mental status", "confusion/seizure",
-             "vomiting/dehydration"],
-        )
+            symptoms = st.multiselect(
+                "Any urgent symptoms now? (a high reading + symptoms can be an emergency)",
+                ["chest pain", "shortness of breath", "vision changes", "weakness/numbness",
+                 "difficulty speaking", "altered mental status", "confusion/seizure",
+                 "vomiting/dehydration"],
+            )
 
         if st.button("Check my health", key="qc_run"):
             age = q_age if q_age else None
