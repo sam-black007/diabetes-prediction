@@ -448,69 +448,50 @@ def glucose_panel():
 
 PROFESSIONAL_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-html, body, [class*="css"] { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+html, body, [class*="css"] { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 .stApp { background: transparent; }
 
-/* Hero header */
+/* Hero header — simple, no animations */
 .hero {
-    position: relative; overflow: hidden;
     display: flex; align-items: center; gap: 18px;
-    padding: 26px 30px; border-radius: 18px;
-    background: linear-gradient(120deg, #0E7C86, #0B5C9E, #11A6A0, #0E7C86);
-    background-size: 300% 300%;
-    animation: heroShift 14s ease infinite;
-    color: #FFFFFF; box-shadow: 0 10px 30px rgba(14,124,134,0.22);
-    margin-bottom: 22px;
-}
-.hero::before, .hero::after {
-    content: ""; position: absolute; border-radius: 50%;
-    background: rgba(255,255,255,0.16);
-}
-.hero::before { width: 190px; height: 190px; top: -70px; right: -40px; }
-.hero::after { width: 130px; height: 130px; bottom: -55px; left: 28%; }
-.hero-art { margin-left: auto; width: 150px; height: auto; flex: 0 0 auto; position: relative; z-index: 1; }
-@keyframes heroShift {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
+    padding: 24px 28px; border-radius: 12px;
+    background: #16242B;
+    color: #FFFFFF;
+    margin-bottom: 20px;
 }
 .hero-badge {
-    width: 56px; height: 56px; border-radius: 14px; flex: 0 0 56px;
-    background: rgba(255,255,255,0.18); display: flex; align-items: center;
-    justify-content: center; font-size: 30px; animation: bob 3s ease-in-out infinite;
-    position: relative; z-index: 1;
+    width: 52px; height: 52px; border-radius: 10px; flex: 0 0 52px;
+    background: #0E7C86; display: flex; align-items: center;
+    justify-content: center; font-size: 26px;
 }
-@keyframes bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-.hero h1 { font-size: 26px; font-weight: 700; margin: 0; letter-spacing: -0.3px; }
-.hero p { margin: 4px 0 0; font-size: 14px; opacity: 0.9; font-weight: 400; }
+.hero h1 { font-size: 24px; font-weight: 700; margin: 0; }
+.hero p { margin: 4px 0 0; font-size: 14px; opacity: 0.8; }
 
 /* Section cards */
 .section-card {
-    background: #F2F6F8; border: 1px solid #E3EBEF; border-radius: 14px;
-    padding: 20px 22px; margin-bottom: 16px;
+    background: #F8F9FA; border: 1px solid #DEE2E6; border-radius: 8px;
+    padding: 18px 20px; margin-bottom: 14px;
 }
 
 /* Tabs */
-.stTabs [data-baseweb="tab-list"] { gap: 6px; }
+.stTabs [data-baseweb="tab-list"] { gap: 4px; }
 .stTabs [data-baseweb="tab"] {
-    border-radius: 9px 9px 0 0; padding: 9px 18px; font-weight: 600;
-    background-color: #F2F6F8; color: #41565F;
+    border-radius: 6px 6px 0 0; padding: 8px 16px; font-weight: 600;
+    background-color: #F1F3F5; color: #495057;
 }
 .stTabs [aria-selected="true"] { background-color: #0E7C86 !important; color: #FFFFFF !important; }
 
 /* Buttons */
 .stButton > button[kind="primary"] {
-    background: linear-gradient(120deg, #0E7C86, #0B5C9E);
-    border: none; border-radius: 10px; font-weight: 600; padding: 0.55rem 1.4rem;
-    box-shadow: 0 4px 14px rgba(14,124,134,0.25);
+    background: #0E7C86; border: none; border-radius: 6px;
+    font-weight: 600; padding: 0.5rem 1.2rem;
 }
-.stButton > button[kind="primary"]:hover { filter: brightness(1.05); }
+.stButton > button[kind="primary"]:hover { background: #0B6B73; }
 
 /* Metrics */
 [data-testid="stMetric"] {
-    background: #FFFFFF; border: 1px solid #E3EBEF; border-radius: 12px;
-    padding: 10px 14px; box-shadow: 0 2px 8px rgba(22,36,43,0.05);
+    background: #FFFFFF; border: 1px solid #DEE2E6; border-radius: 8px;
+    padding: 10px 14px;
 }
 
 div[data-testid="stCaption"] { color: #7A8B93; font-size: 12.5px; }
@@ -577,19 +558,19 @@ body {
 .landing-hero .sub { font-size: 17px; color: #7A8B93; margin: 0 auto 36px; max-width: 520px; line-height: 1.5; }
 .landing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin: 0 auto 32px; max-width: 720px; }
 .landing-card {
-    background: #FFFFFF; border: 1px solid #E3EBEF; border-radius: 16px;
-    padding: 28px 18px; text-align: center; cursor: pointer;
-    transition: all 0.2s ease; text-decoration: none; display: block;
+    background: #FFFFFF; border: 1px solid #E3EBEF; border-radius: 12px;
+    padding: 24px 16px; text-align: center; cursor: pointer;
+    text-decoration: none; display: block;
 }
-.landing-card:hover { border-color: #0E7C86; box-shadow: 0 8px 24px rgba(14,124,134,0.12); transform: translateY(-2px); }
-.landing-card .icon { font-size: 38px; margin-bottom: 14px; display: block; }
+.landing-card:hover { border-color: #0E7C86; }
+.landing-card .icon { font-size: 34px; margin-bottom: 12px; display: block; }
 .landing-card h3 { margin: 0 0 6px; font-size: 16px; color: #16242B; font-weight: 600; }
 .landing-card p { margin: 0; font-size: 13px; color: #7A8B93; line-height: 1.4; }
 .landing-quick { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-bottom: 28px; }
 .landing-pill {
     background: #F2F6F8; border: 1px solid #E3EBEF; border-radius: 999px;
     padding: 8px 16px; font-size: 13px; color: #41565F; cursor: pointer;
-    transition: all 0.15s ease; text-decoration: none;
+    text-decoration: none;
 }
 .landing-pill:hover { background: #0E7C86; color: #FFFFFF; border-color: #0E7C86; }
 .back-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
