@@ -498,3 +498,802 @@ def aggregate_evidence(glucose_rules=None, bp_rule=None, bmi_rule=None,
         "findrisc": findrisc,
         "ml": ml,
     }
+
+
+# ---------------------------------------------------------------------------
+# 1. A1C ↔ Average Glucose Converter
+# ---------------------------------------------------------------------------
+def a1c_to_avg_glucose(a1c_percent):
+    """Convert HbA1c percentage to estimated average glucose (mg/dL).
+    Formula: eAG = 28.7 × A1C − 46.7 (ADA/Nathan et al. 2008)."""
+    try:
+        a1c = float(a1c_percent)
+    except (TypeError, ValueError):
+        return None
+    if a1c < 3.0 or a1c > 20.0:
+        return None
+    return round(28.7 * a1c - 46.7, 1)
+
+
+def avg_glucose_to_a1c(eag_mg_dl):
+    """Convert estimated average glucose (mg/dL) to A1C percentage."""
+    try:
+        eag = float(eag_mg_dl)
+    except (TypeError, ValueError):
+        return None
+    if eag < 40 or eag > 500:
+        return None
+    return round((eag + 46.7) / 28.7, 1)
+
+
+def a1c_converter(a1c=None, eag=None):
+    """Convert between A1C and average glucose. Provide one value."""
+    if a1c is not None:
+        result = a1c_to_avg_glucose(a1c)
+        return {"a1c": a1c, "avg_glucose_mg_dl": result,
+                "interpretation": f"A1C {a1c}% ≈ {result} mg/dL average" if result else "Invalid input"}
+    if eag is not None:
+        result = avg_glucose_to_a1c(eag)
+        return {"a1c": result, "avg_glucose_mg_dl": eag,
+                "interpretation": f"{eag} mg/dL average ≈ A1C {result}%" if result else "Invalid input"}
+    return None
+
+
+# ---------------------------------------------------------------------------
+# 2. Risk Stratification (Low / Medium / High / Very High)
+# ---------------------------------------------------------------------------
+def stratify_risk(glucose_rules, bp_rule, bmi_rule, lipid_rules, ml=None, age=None):
+    """Classify overall risk into Low / Medium / High / Very High."""
+    score = 0
+    factors = []
+
+    # Glucose contribution (0-40 points)
+    if glucose_rules:
+        worst = max(glucose_rules, key=lambda r: severity_rank(r["severity"]))
+        g_scores = {
+            "normal": 0, "low": 5, "elevated": 10, "prediabetes": 20,
+            "stage1": 25, "high": 30, "stage2": 35, "very_high": 40,
+            "diabetes_range": 40, "severe": 40, "critical": 40, "emergency": 40,
+        }
+        s = g_scores.get(worst["severity"], 0)
+        score += s
+        if s >= 20:
+            factors.append(f"Glucose ({worst['status']})")
+
+    # BP contribution (0-30 points)
+    if bp_rule:
+        bp_scores = {
+            "normal": 0, "elevated": 5, "stage1": 10, "stage2": 20,
+            "severe": 30, "emergency": 30, "low": 5,
+        }
+        s = bp_scores.get(bp_rule["severity"], 0)
+        score += s
+        if s >= 10:
+            factors.append(f"Blood pressure ({bp_rule['status']})")
+
+    # BMI contribution (0-15 points)
+    if bmi_rule and bmi_rule["category"] != "missing":
+        bmi_scores = {
+            "normal": 0, "overweight": 5, "obese": 15, "underweight": 5,
+        }
+        s = bmi_scores.get(bmi_rule.get("category", ""), 0)
+        score += s
+        if s >= 5:
+            factors.append(f"BMI ({bmi_rule['status']})")
+
+    # Lipids contribution (0-15 points)
+    if lipid_rules:
+        worst_lipid = max(lipid_rules, key=lambda r: severity_rank(r["severity"]))
+        lipid_scores = {"normal": 0, "elevated": 5, "high": 15, "low": 5}
+        s = lipid_scores.get(worst_lipid["severity"], 0)
+        score += s
+        if s >= 5:
+            factors.append(f"Lipids ({worst_lipid['status']})")
+
+    # Age risk (0-10 points)
+    if age and age > 45:
+        age_pts = min(10, (age - 45) // 5 * 2)
+        score += age_pts
+        if age_pts >= 4:
+            factors.append(f"Age ({age})")
+
+    # ML model bonus (0-5 points)
+    if ml and ml["score"] >= 0.5:
+        ml_pts = min(5, int((ml["score"] - 0.5) * 10))
+        score += ml_pts
+
+    # Classify
+    if score <= 15:
+        level, color = "Low", "#2E7D32"
+    elif score <= 35:
+        level, color = "Medium", "#F9A825"
+    elif score <= 60:
+        level, color = "High", "#E67E22"
+    else:
+        level, color = "Very High", "#C0392B"
+
+    return {
+        "score": score, "level": level, "color": color,
+        "factors": factors,
+        "interpretation": f"Overall risk: {level} ({score}/100 points)",
+    }
+
+
+# ---------------------------------------------------------------------------
+# 3. Follow-up Schedule
+# ---------------------------------------------------------------------------
+def followup_schedule(glucose_rules, bp_rule, overall_severity="normal"):
+    """Recommend when to retest based on results."""
+    if overall_severity in ("emergency", "critical", "severe"):
+        return {"when": "Immediate", "text": "Seek medical attention now. Do not wait.",
+                "color": "#C0392B", "icon": "🚨"}
+    if overall_severity in ("diabetes_range", "very_high"):
+        return {"when": "Within 1-2 weeks", "text": "Confirm with a fasting glucose or HbA1c test. See a doctor.",
+                "color": "#E67E22", "icon": "⚠️"}
+
+    has_prediabetes = False
+    has_abnormal_bp = False
+    if glucose_rules:
+        for r in glucose_rules:
+            if r["severity"] in ("prediabetes", "elevated", "needs_confirmation"):
+                has_prediabetes = True
+    if bp_rule and bp_rule["severity"] in ("stage1", "stage2"):
+        has_abnormal_bp = True
+
+    if has_prediabetes or has_abnormal_bp:
+        return {"when": "3-6 months", "text": "Recheck fasting glucose/HbA1c. Lifestyle changes recommended.",
+                "color": "#F9A825", "icon": "📋"}
+
+    return {"when": "12 months", "text": "Annual screening recommended. Maintain healthy habits.",
+            "color": "#2E7D32", "icon": "✅"}
+
+
+# ---------------------------------------------------------------------------
+# 4. Emergency Protocols
+# ---------------------------------------------------------------------------
+def emergency_protocols(glucose_rules, bp_rule, symptoms=None):
+    """Provide actionable emergency guidance for critical values."""
+    protocols = []
+    symptoms = symptoms or []
+
+    if glucose_rules:
+        for r in glucose_rules:
+            val = r.get("value")
+            if val is None:
+                continue
+            if val < 54:
+                protocols.append({
+                    "type": "Hypoglycemia (severe)",
+                    "urgency": "EMERGENCY",
+                    "color": "#C0392B",
+                    "action": [
+                        "If conscious: consume 15-20g fast-acting glucose (juice, glucose tablets)",
+                        "Recheck in 15 minutes",
+                        "If unconscious or unable to swallow: call emergency services immediately",
+                        "Do NOT leave the person alone",
+                    ],
+                })
+            elif val < 70:
+                protocols.append({
+                    "type": "Hypoglycemia (Level 1)",
+                    "urgency": "Urgent",
+                    "color": "#E67E22",
+                    "action": [
+                        "Consume 15g fast-acting carbohydrate",
+                        "Recheck glucose in 15 minutes",
+                        "If symptoms persist, seek medical advice",
+                    ],
+                })
+            elif val > 400:
+                protocols.append({
+                    "type": "Severe Hyperglycemia",
+                    "urgency": "EMERGENCY",
+                    "color": "#C0392B",
+                    "action": [
+                        "Seek emergency medical care immediately",
+                        "Risk of diabetic ketoacidosis (DKA) or hyperosmolar syndrome",
+                        "Do NOT exercise — it can worsen the condition",
+                        "Drink water (if able to swallow)",
+                    ],
+                })
+            elif val > 300:
+                protocols.append({
+                    "type": "Hyperglycemia (critical)",
+                    "urgency": "Urgent",
+                    "color": "#E67E22",
+                    "action": [
+                        "Contact your doctor or seek urgent care",
+                        "Check for ketones if diabetic",
+                        "Stay hydrated — drink water",
+                        "Avoid exercise until glucose normalizes",
+                    ],
+                })
+
+    if bp_rule and bp_rule["severity"] in ("severe", "emergency"):
+        protocols.append({
+            "type": "Hypertensive Crisis",
+            "urgency": "EMERGENCY" if bp_rule["severity"] == "emergency" else "Urgent",
+            "color": "#C0392B" if bp_rule["severity"] == "emergency" else "#E67E22",
+            "action": [
+                "Seek emergency medical care immediately",
+                "Do NOT take extra blood pressure medication unless directed",
+                "Sit upright and try to remain calm",
+                "If chest pain, shortness of breath, or vision changes: call emergency services",
+            ],
+        })
+
+    return protocols
+
+
+# ---------------------------------------------------------------------------
+# 5. Family History Risk Factor
+# ---------------------------------------------------------------------------
+def family_history_risk(has_parent_diabetes=False, has_sibling_diabetes=False,
+                        parent_diagnosed_age=None):
+    """Assess diabetes risk from family history."""
+    risk_points = 0
+    factors = []
+
+    if has_parent_diabetes:
+        risk_points += 30
+        factors.append("Parent with diabetes")
+    if has_sibling_diabetes:
+        risk_points += 20
+        factors.append("Sibling with diabetes")
+    if parent_diagnosed_age and parent_diagnosed_age < 50:
+        risk_points += 10
+        factors.append(f"Parent diagnosed before age {parent_diagnosed_age} (early onset)")
+
+    if risk_points == 0:
+        level = "No family history reported"
+        color = "#2E7D32"
+    elif risk_points <= 25:
+        level = "Moderate family risk"
+        color = "#F9A825"
+    elif risk_points <= 40:
+        level = "High family risk"
+        color = "#E67E22"
+    else:
+        level = "Very high family risk"
+        color = "#C0392B"
+
+    return {
+        "points": risk_points, "level": level, "color": color,
+        "factors": factors,
+        "interpretation": f"Family history: {level}" if factors else "No family diabetes history reported",
+    }
+
+
+# ---------------------------------------------------------------------------
+# 6. Complication Risk Calculator
+# ---------------------------------------------------------------------------
+def complication_risks(glucose_rules, bp_rule, bmi_rule, lipid_rules, age=None, smoking=False):
+    """Estimate relative risk of common diabetes complications."""
+    risks = {}
+
+    # Cardiovascular disease risk
+    cvd_score = 0
+    if bp_rule and bp_rule["severity"] in ("stage1", "stage2", "severe", "emergency"):
+        cvd_score += 30
+    if lipid_rules:
+        for r in lipid_rules:
+            if r["measurement_type"] == "ldl_c" and r["severity"] == "high":
+                cvd_score += 20
+            if r["measurement_type"] == "hdl_c" and r["severity"] == "low":
+                cvd_score += 15
+            if r["measurement_type"] == "triglycerides" and r["severity"] == "high":
+                cvd_score += 10
+    if glucose_rules:
+        worst = max(glucose_rules, key=lambda r: severity_rank(r["severity"]))
+        if worst["severity"] in ("diabetes_range", "very_high", "severe"):
+            cvd_score += 25
+        elif worst["severity"] in ("prediabetes", "elevated"):
+            cvd_score += 10
+    if age and age > 55:
+        cvd_score += 10
+    if smoking:
+        cvd_score += 15
+    risks["cardiovascular"] = {
+        "score": min(100, cvd_score),
+        "level": "High" if cvd_score >= 50 else ("Moderate" if cvd_score >= 25 else "Low"),
+        "description": "Risk of heart disease, stroke, peripheral artery disease",
+    }
+
+    # Neuropathy risk (primarily glucose-driven)
+    neuro_score = 0
+    if glucose_rules:
+        worst = max(glucose_rules, key=lambda r: severity_rank(r["severity"]))
+        if worst["severity"] in ("diabetes_range", "very_high", "severe"):
+            neuro_score += 60
+        elif worst["severity"] in ("prediabetes", "elevated"):
+            neuro_score += 20
+    if bp_rule and bp_rule["severity"] in ("stage2", "severe"):
+        neuro_score += 20
+    risks["neuropathy"] = {
+        "score": min(100, neuro_score),
+        "level": "High" if neuro_score >= 50 else ("Moderate" if neuro_score >= 25 else "Low"),
+        "description": "Risk of nerve damage (tingling, numbness, pain)",
+    }
+
+    # Nephropathy risk (kidney)
+    nepho_score = 0
+    if glucose_rules:
+        worst = max(glucose_rules, key=lambda r: severity_rank(r["severity"]))
+        if worst["severity"] in ("diabetes_range", "very_high"):
+            nepho_score += 50
+        elif worst["severity"] in ("prediabetes",):
+            nepho_score += 15
+    if bp_rule and bp_rule["severity"] in ("stage2", "severe"):
+        nepho_score += 30
+    risks["nephropathy"] = {
+        "score": min(100, nepho_score),
+        "level": "High" if nepho_score >= 50 else ("Moderate" if nepho_score >= 25 else "Low"),
+        "description": "Risk of kidney damage (nephropathy)",
+    }
+
+    # Retinopathy risk (eye)
+    retino_score = 0
+    if glucose_rules:
+        worst = max(glucose_rules, key=lambda r: severity_rank(r["severity"]))
+        if worst["severity"] in ("diabetes_range", "very_high"):
+            retino_score += 55
+        elif worst["severity"] in ("prediabetes",):
+            retino_score += 10
+    if bp_rule and bp_rule["severity"] in ("stage2", "severe"):
+        retino_score += 25
+    risks["retinopathy"] = {
+        "score": min(100, retino_score),
+        "level": "High" if retino_score >= 50 else ("Moderate" if retino_score >= 25 else "Low"),
+        "description": "Risk of eye damage (diabetic retinopathy)",
+    }
+
+    return risks
+
+
+# ---------------------------------------------------------------------------
+# 7. Lifestyle Recommendations
+# ---------------------------------------------------------------------------
+def lifestyle_recommendations(glucose_rules, bp_rule, bmi_rule, lipid_rules, health_score=100):
+    """Generate personalized lifestyle recommendations based on risk profile."""
+    tips = []
+
+    # Glucose-based
+    if glucose_rules:
+        worst = max(glucose_rules, key=lambda r: severity_rank(r["severity"]))
+        if worst["severity"] in ("prediabetes", "elevated"):
+            tips.append({"category": "Diet", "priority": "high",
+                        "tip": "Reduce refined carbs and sugary drinks. Choose whole grains, vegetables, and lean proteins.",
+                        "source": "ADA 2026"})
+            tips.append({"category": "Activity", "priority": "high",
+                        "tip": "150 minutes/week of moderate exercise (brisk walking, cycling). Even 10-minute walks help.",
+                        "source": "ADA 2026"})
+        elif worst["severity"] in ("diabetes_range", "very_high"):
+            tips.append({"category": "Diet", "priority": "urgent",
+                        "tip": "See a dietitian for a meal plan. Count carbohydrates. Avoid sugary foods entirely.",
+                        "source": "ADA 2026"})
+            tips.append({"category": "Activity", "priority": "high",
+                        "tip": "Exercise regularly but avoid intense activity if glucose >300 mg/dL.",
+                        "source": "ADA 2026"})
+
+    # BP-based
+    if bp_rule and bp_rule["severity"] in ("stage1", "stage2", "severe"):
+        tips.append({"category": "Diet", "priority": "high",
+                    "tip": "DASH diet: reduce sodium to <2300mg/day. Eat more fruits, vegetables, whole grains.",
+                    "source": "AHA/ACC 2025"})
+        tips.append({"category": "Lifestyle", "priority": "high",
+                    "tip": "Limit alcohol to 1 drink/day (women) or 2 drinks/day (men). Quit smoking if applicable.",
+                    "source": "AHA/ACC 2025"})
+
+    # BMI-based
+    if bmi_rule:
+        if bmi_rule.get("category") == "overweight":
+            tips.append({"category": "Weight", "priority": "medium",
+                        "tip": "Losing 5-10% of body weight can significantly reduce diabetes risk.",
+                        "source": "ADA 2026"})
+        elif bmi_rule.get("category") == "obese":
+            tips.append({"category": "Weight", "priority": "high",
+                        "tip": "Weight loss of 5-10% is recommended. Consider structured program or medical guidance.",
+                        "source": "ADA 2026"})
+
+    # Lipid-based
+    if lipid_rules:
+        for r in lipid_rules:
+            if r["measurement_type"] == "ldl_c" and r["severity"] == "high":
+                tips.append({"category": "Diet", "priority": "medium",
+                            "tip": "Reduce saturated fat. Increase fiber (oats, beans, nuts). Consider fish twice weekly.",
+                            "source": "AHA"})
+            if r["measurement_type"] == "triglycerides" and r["severity"] == "high":
+                tips.append({"category": "Diet", "priority": "medium",
+                            "tip": "Reduce sugar and refined carbs. Limit alcohol. Increase omega-3 fatty acids.",
+                            "source": "AHA"})
+
+    # General tips
+    tips.append({"category": "Sleep", "priority": "medium",
+                "tip": "Aim for 7-8 hours of quality sleep. Poor sleep worsens insulin resistance.",
+                "source": "ADA 2026"})
+    tips.append({"category": "Stress", "priority": "low",
+                "tip": "Practice stress management (deep breathing, meditation). Chronic stress raises cortisol and glucose.",
+                "source": "ADA 2026"})
+
+    return tips
+
+
+# ---------------------------------------------------------------------------
+# 8. Medication Impact Warnings
+# ---------------------------------------------------------------------------
+MEDICATION_IMPACTS = {
+    "prednisone": {"effect": "Raises blood glucose", "severity": "high",
+                   "advice": "Monitor glucose closely. May need temporary insulin adjustment."},
+    "dexamethasone": {"effect": "Raises blood glucose significantly", "severity": "high",
+                      "advice": "Can cause steroid-induced hyperglycemia. Monitor frequently."},
+    "metformin": {"effect": "Lowers blood glucose", "severity": "normal",
+                  "advice": "Common first-line diabetes medication. Take with food to reduce GI side effects."},
+    "insulin": {"effect": "Lowers blood glucose", "severity": "normal",
+                "advice": "Monitor for hypoglycemia. Always carry fast-acting glucose."},
+    "lisinopril": {"effect": "Lowers blood pressure, may affect potassium", "severity": "normal",
+                   "advice": "ACE inhibitor. Monitor kidney function and potassium levels."},
+    "amlodipine": {"effect": "Lowers blood pressure", "severity": "normal",
+                   "advice": "Calcium channel blocker. May cause ankle swelling."},
+    "atorvastatin": {"effect": "Lowers LDL cholesterol", "severity": "normal",
+                     "advice": "Statin. Monitor liver function. Report unexplained muscle pain."},
+    "aspirin": {"effect": "Blood thinner", "severity": "normal",
+                "advice": "Low-dose aspirin for cardiovascular protection. Risk of bleeding."},
+    "ibuprofen": {"effect": "May raise blood pressure, affect kidneys", "severity": "moderate",
+                  "advice": "NSAID — use sparingly if you have hypertension or kidney concerns."},
+    "naproxen": {"effect": "May raise blood pressure, affect kidneys", "severity": "moderate",
+                 "advice": "NSAID — use sparingly if you have hypertension or kidney concerns."},
+    "hydrochlorothiazide": {"effect": "Lowers blood pressure, may raise glucose", "severity": "moderate",
+                            "advice": "Thiazide diuretic. May slightly raise blood sugar. Monitor glucose."},
+    "glipizide": {"effect": "Lowers blood glucose", "severity": "normal",
+                  "advice": "Sulfonylurea. Risk of hypoglycemia. Take before meals."},
+    "jardiance": {"effect": "Lowers blood glucose and BP", "severity": "normal",
+                  "advice": "SGLT2 inhibitor. May cause UTIs. Stay hydrated."},
+    "ozempic": {"effect": "Lowers blood glucose, promotes weight loss", "severity": "normal",
+                "advice": "GLP-1 agonist. May cause nausea. Inject weekly."},
+}
+
+
+def check_medication_impacts(medications):
+    """Check a list of medications for interactions with glucose/BP."""
+    results = []
+    for med in medications:
+        med_lower = med.lower().strip()
+        if med_lower in MEDICATION_IMPACTS:
+            info = MEDICATION_IMPACTS[med_lower]
+            results.append({"medication": med, **info})
+        else:
+            results.append({"medication": med, "effect": "Unknown",
+                          "severity": "unknown",
+                          "advice": "No interaction data available. Consult your pharmacist."})
+    return results
+
+
+# ---------------------------------------------------------------------------
+# 9. Comorbidity Assessment
+# ---------------------------------------------------------------------------
+def comorbidity_assessment(has_diabetes=False, has_hypertension=False, has_obesity=False,
+                           has_dyslipidemia=False, has_ckd=False, has_heart_disease=False):
+    """Assess combined risk from multiple conditions."""
+    conditions = []
+    if has_diabetes:
+        conditions.append("Diabetes")
+    if has_hypertension:
+        conditions.append("Hypertension")
+    if has_obesity:
+        conditions.append("Obesity")
+    if has_dyslipidemia:
+        conditions.append("Dyslipidemia")
+    if has_ckd:
+        conditions.append("Chronic Kidney Disease")
+    if has_heart_disease:
+        conditions.append("Heart Disease")
+
+    n = len(conditions)
+    if n == 0:
+        return {"count": 0, "level": "No comorbidities", "color": "#2E7D32",
+                "multiplier": 1.0, "conditions": [],
+                "interpretation": "No reported comorbidities."}
+
+    # Risk multiplier based on combinations
+    multiplier = 1.0
+    if has_diabetes and has_hypertension:
+        multiplier = 2.0
+    if has_diabetes and has_heart_disease:
+        multiplier = 2.5
+    if has_diabetes and has_ckd:
+        multiplier = 2.5
+    if n >= 3:
+        multiplier = 3.0
+
+    if multiplier >= 2.5:
+        level, color = "Very high combined risk", "#C0392B"
+    elif multiplier >= 2.0:
+        level, color = "High combined risk", "#E67E22"
+    elif n >= 1:
+        level, color = "Moderate combined risk", "#F9A825"
+    else:
+        level, color = "Low risk", "#2E7D32"
+
+    return {
+        "count": n, "level": level, "color": color,
+        "multiplier": multiplier, "conditions": conditions,
+        "interpretation": f"{n} comorbid condition(s): {', '.join(conditions)}. Risk multiplier: {multiplier}x",
+    }
+
+
+# ---------------------------------------------------------------------------
+# 10. What If Simulator
+# ---------------------------------------------------------------------------
+def whatif_simulate(baseline_glucose=None, baseline_bp_sbp=None, baseline_bmi=None,
+                    target_glucose=None, target_bp_sbp=None, target_bmi=None):
+    """Simulate how changes in values affect risk classification."""
+    changes = []
+
+    if baseline_glucose is not None and target_glucose is not None:
+        base_rule = classify_glucose(baseline_glucose, "fasting")
+        target_rule = classify_glucose(target_glucose, "fasting")
+        base_rank = severity_rank(base_rule["severity"])
+        target_rank = severity_rank(target_rule["severity"])
+        diff = base_rank - target_rank
+        changes.append({
+            "metric": "Fasting Glucose",
+            "from": f"{baseline_glucose} mg/dL", "to": f"{target_glucose} mg/dL",
+            "from_status": base_rule["status"], "to_status": target_rule["status"],
+            "improved": diff > 0, "same": diff == 0,
+            "impact": "Significant improvement" if diff >= 2 else ("Moderate improvement" if diff > 0 else ("Worsened" if diff < 0 else "No change")),
+        })
+
+    if baseline_bp_sbp is not None and target_bp_sbp is not None:
+        base_rule = classify_bp(baseline_bp_sbp, None)
+        target_rule = classify_bp(target_bp_sbp, None)
+        base_rank = severity_rank(base_rule["severity"])
+        target_rank = severity_rank(target_rule["severity"])
+        diff = base_rank - target_rank
+        changes.append({
+            "metric": "Blood Pressure (SBP)",
+            "from": f"{baseline_bp_sbp} mmHg", "to": f"{target_bp_sbp} mmHg",
+            "from_status": base_rule["status"], "to_status": target_rule["status"],
+            "improved": diff > 0, "same": diff == 0,
+            "impact": "Significant improvement" if diff >= 2 else ("Moderate improvement" if diff > 0 else ("Worsened" if diff < 0 else "No change")),
+        })
+
+    if baseline_bmi is not None and target_bmi is not None:
+        base_rule = compute_bmi(baseline_bmi, 170)  # assume 170cm for BMI comparison
+        # Recalculate with target weight: BMI = weight / (1.7^2) => weight = BMI * 1.7^2
+        target_weight = target_bmi * (1.7 ** 2)
+        target_rule = compute_bmi(target_weight, 170)
+        changes.append({
+            "metric": "BMI",
+            "from": f"{baseline_bmi:.1f}", "to": f"{target_bmi:.1f}",
+            "from_status": base_rule["status"], "to_status": target_rule["status"],
+            "improved": severity_rank(base_rule["severity"]) > severity_rank(target_rule["severity"]),
+            "same": base_rule["severity"] == target_rule["severity"],
+            "impact": "Risk reduction" if severity_rank(base_rule["severity"]) > severity_rank(target_rule["severity"]) else "No change",
+        })
+
+    return changes
+
+
+# ---------------------------------------------------------------------------
+# 11. Gestational Diabetes Module
+# ---------------------------------------------------------------------------
+GESTATIONAL_THRESHOLDS = {
+    "fasting": {"normal": (0, 92), "elevated": (92, 126), "diabetes": (126, 999)},
+    "1h_postmeal": {"normal": (0, 140), "elevated": (140, 180), "diabetes": (180, 999)},
+    "2h_postmeal": {"normal": (0, 120), "elevated": (120, 153), "diabetes": (153, 999)},
+}
+
+
+def classify_gestational_glucose(value, measurement_type):
+    """Classify glucose for pregnant women (different thresholds)."""
+    if value is None:
+        return _missing("glucose", f"gestational_{measurement_type}")
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return _invalid("glucose", f"gestational_{measurement_type}")
+
+    thresholds = GESTATIONAL_THRESHOLDS.get(measurement_type)
+    if not thresholds:
+        return _invalid("glucose", f"gestational_{measurement_type}", "Unknown measurement type.")
+
+    if v < thresholds["normal"][1]:
+        return _rule("glucose", f"gestational_{measurement_type}", v, "normal", "normal",
+                     "Normal for pregnancy",
+                     f"Gestational glucose {v:.0f} mg/dL is within target for pregnancy.",
+                     source="ACOG 2024")
+    if v < thresholds["diabetes"][0]:
+        return _rule("glucose", f"gestational_{measurement_type}", v, "gestational_diabetes", "elevated",
+                     "Gestational diabetes range",
+                     f"Gestational glucose {v:.0f} mg/dL exceeds pregnancy target. Diagnosis requires OGTT.",
+                     source="ACOG 2024")
+    return _rule("glucose", f"gestational_{measurement_type}", v, "pregestational_diabetes", "high",
+                 "Pre-existing diabetes range",
+                 f"Glucose {v:.0f} mg/dL suggests possible pre-existing diabetes. Further testing needed.",
+                 source="ACOG 2024")
+
+
+# ---------------------------------------------------------------------------
+# 12. Pediatric Considerations
+# ---------------------------------------------------------------------------
+def pediatric_adjustments(age, has_type2_risk_factors=False):
+    """Adjust screening interpretation for children/adolescents."""
+    if age is None:
+        return {"applicable": False}
+    try:
+        age = int(age)
+    except (TypeError, ValueError):
+        return {"applicable": False}
+
+    if age >= 18:
+        return {"applicable": False}
+
+    # ADA recommends screening children/teens with risk factors
+    notes = []
+    if age < 10:
+        notes.append("Type 2 diabetes is rare under age 10. Type 1 is more common in children.")
+    if has_type2_risk_factors:
+        notes.append("Screening recommended due to risk factors (obesity, family history, race/ethnicity).")
+
+    return {
+        "applicable": True,
+        "age": age,
+        "notes": notes,
+        "interpretation": f"Pediatric patient (age {age}). " + " ".join(notes) if notes else f"Pediatric patient (age {age}).",
+        "source": "ADA 2026 — Pediatric screening guidelines",
+    }
+
+
+# ---------------------------------------------------------------------------
+# 13. Elderly Adjustments (age > 65)
+# ---------------------------------------------------------------------------
+def elderly_adjustments(age, comorbidities=None):
+    """Provide relaxed targets for adults over 65."""
+    if age is None:
+        return {"applicable": False}
+    try:
+        age = int(age)
+    except (TypeError, ValueError):
+        return {"applicable": False}
+
+    if age <= 65:
+        return {"applicable": False}
+
+    comorbidities = comorbidities or []
+    frail = "frail" in [c.lower() for c in comorbidities]
+
+    # ADA recommends less stringent targets for elderly
+    targets = {
+        "fasting_glucose": "90-150 mg/dL" if frail else "80-130 mg/dL",
+        "hba1c": "<8.5%" if frail else "<8.0%",
+        "bp_systolic": "<150 mmHg" if frail else "<140 mmHg",
+    }
+
+    notes = []
+    if frail:
+        notes.append("Frail elderly: relax targets to avoid hypoglycemia risk.")
+    else:
+        notes.append("Healthy elderly: slightly relaxed targets compared to younger adults.")
+
+    return {
+        "applicable": True, "age": age, "targets": targets,
+        "notes": notes, "frail": frail,
+        "interpretation": f"Elderly patient (age {age}). " + " ".join(notes),
+        "source": "ADA 2026 — Older adults guidelines",
+    }
+
+
+# ---------------------------------------------------------------------------
+# 14. Previous Report Comparison
+# ---------------------------------------------------------------------------
+def compare_reports(current, previous):
+    """Compare current screening results with a previous report."""
+    comparisons = []
+    metrics = [
+        ("fasting_glucose", "Fasting Glucose", "mg/dL"),
+        ("postmeal_glucose", "Post-meal Glucose", "mg/dL"),
+        ("hba1c", "HbA1c", "%"),
+        ("sbp", "Systolic BP", "mmHg"),
+        ("dbp", "Diastolic BP", "mmHg"),
+        ("bmi", "BMI", "kg/m²"),
+        ("ldl", "LDL-C", "mg/dL"),
+        ("hdl", "HDL-C", "mg/dL"),
+        ("triglycerides", "Triglycerides", "mg/dL"),
+    ]
+
+    for key, label, unit in metrics:
+        cur = current.get(key)
+        prev = previous.get(key)
+        if cur is not None and prev is not None:
+            diff = cur - prev
+            pct = (diff / prev * 100) if prev != 0 else 0
+            # For some metrics, lower is better; for others, higher is better
+            lower_better = key in ("fasting_glucose", "postmeal_glucose", "hba1c",
+                                   "sbp", "dbp", "bmi", "ldl", "triglycerides")
+            improved = (diff < 0) if lower_better else (diff > 0)
+            comparisons.append({
+                "metric": label, "unit": unit,
+                "current": cur, "previous": prev,
+                "change": round(diff, 1), "pct_change": round(pct, 1),
+                "improved": improved,
+                "summary": f"{label}: {prev} → {cur} ({'↓' if diff < 0 else '↑'}{abs(pct):.1f}%)",
+            })
+
+    improved_count = sum(1 for c in comparisons if c["improved"])
+    total = len(comparisons)
+
+    return {
+        "comparisons": comparisons,
+        "improved": improved_count,
+        "total": total,
+        "summary": f"{improved_count}/{total} metrics improved" if total > 0 else "No comparable data",
+    }
+
+
+# ---------------------------------------------------------------------------
+# 15. Risk Factor Breakdown
+# ---------------------------------------------------------------------------
+def risk_factor_breakdown(glucose_rules, bp_rule, bmi_rule, lipid_rules, ml=None,
+                          family_history=None, age=None):
+    """Show which factors contribute most to overall risk."""
+    factors = []
+
+    # Glucose
+    if glucose_rules:
+        worst = max(glucose_rules, key=lambda r: severity_rank(r["severity"]))
+        contrib = {"fasting": 0, "elevated": 15, "prediabetes": 25, "stage1": 30,
+                   "high": 35, "stage2": 40, "very_high": 45, "diabetes_range": 50,
+                   "severe": 50, "critical": 50, "emergency": 50}
+        pts = contrib.get(worst["severity"], 0)
+        factors.append({"factor": "Glucose", "contribution": pts, "status": worst["status"],
+                       "detail": f"{worst['measurement_type']}: {worst['value']}"})
+
+    # Blood Pressure
+    if bp_rule:
+        bp_contrib = {"normal": 0, "elevated": 10, "stage1": 20, "stage2": 30,
+                      "severe": 40, "emergency": 40, "low": 10}
+        pts = bp_contrib.get(bp_rule["severity"], 0)
+        factors.append({"factor": "Blood Pressure", "contribution": pts, "status": bp_rule["status"],
+                       "detail": f"BP: {bp_rule['value']}"})
+
+    # BMI
+    if bmi_rule and bmi_rule["category"] != "missing":
+        bmi_contrib = {"normal": 0, "overweight": 15, "obese": 30, "underweight": 10}
+        pts = bmi_contrib.get(bmi_rule.get("category", ""), 0)
+        factors.append({"factor": "BMI", "contribution": pts, "status": bmi_rule["status"],
+                       "detail": f"BMI: {bmi_rule['value']}"})
+
+    # Lipids
+    if lipid_rules:
+        worst = max(lipid_rules, key=lambda r: severity_rank(r["severity"]))
+        lipid_contrib = {"normal": 0, "elevated": 10, "high": 20, "low": 10}
+        pts = lipid_contrib.get(worst["severity"], 0)
+        factors.append({"factor": "Lipids", "contribution": pts, "status": worst["status"],
+                       "detail": f"{worst['measurement_type']}: {worst['value']}"})
+
+    # Age
+    if age and age > 45:
+        pts = min(15, (age - 45) // 5 * 3)
+        factors.append({"factor": "Age", "contribution": pts, "status": f"Age {age}",
+                       "detail": "Age-related risk increase"})
+
+    # Family History
+    if family_history and family_history.get("points", 0) > 0:
+        pts = min(20, family_history["points"] // 2)
+        factors.append({"factor": "Family History", "contribution": pts,
+                       "status": family_history.get("level", ""),
+                       "detail": "; ".join(family_history.get("factors", []))})
+
+    # ML Model
+    if ml and ml["score"] >= 0.5:
+        pts = min(10, int((ml["score"] - 0.5) * 20))
+        factors.append({"factor": "ML Model", "contribution": pts,
+                       "status": f"Risk: {ml['score']:.0%}",
+                       "detail": "PIMA Random Forest prediction"})
+
+    # Sort by contribution
+    factors.sort(key=lambda f: f["contribution"], reverse=True)
+    total = sum(f["contribution"] for f in factors)
+
+    return {"factors": factors, "total": total,
+            "summary": f"Top risk factor: {factors[0]['factor']} ({factors[0]['contribution']} pts)" if factors else "No risk factors identified"}

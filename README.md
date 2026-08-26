@@ -73,39 +73,24 @@ A diabetes risk screening tool that combines clinical rules (ADA 2026, AHA-ACC 2
 - **Dark mode toggle** — 🌙 switch between light and dark themes
 - **Auto-save results** — screening saved to local history
 
-### v2.0 — Database & Authentication (Planned)
-*Cloud sync & user accounts*
+### v2.0 — Advanced Medical Features
+*15 new clinical tools*
 
-- Supabase PostgreSQL integration
-- Google OAuth + email/password login
-- Screening history saved to cloud
-- Trend charts (glucose/BP/weight over time)
-- Achievement badges
-- Daily health challenges
-- Family history module
-- Medication checker
-
-### v3.0 — AI-Powered Wellness (Planned)
-*Smart health coaching*
-
-- AI meal photo analysis (snap a plate → estimate carbs)
-- Personalized meal plans based on risk profile
-- Predictive glucose alerts (30-min lookahead)
-- Sleep-glucose correlation tracking
-- Stress management suggestions
-- What If Simulator (sliders → live risk changes)
-- A1C ↔ average glucose calculator
-
-### v4.0 — Social & Community (Planned)
-*Engagement & motivation*
-
-- Anonymous leaderboard
-- Accountability partner system
-- Community challenges (30-day step challenge)
-- Patient success stories
-- Daily health challenges with streaks
-- Shareable health cards (WhatsApp/Telegram)
-- Health Score history wall
+- **A1C ↔ Average Glucose Converter** — "What does 7.2% mean?" (eAG formula: 28.7×A1C − 46.7)
+- **Risk Stratification** — Low / Medium / High / Very High categories
+- **Follow-up Schedule** — when to retest (1-2 weeks, 3-6 months, 12 months)
+- **Emergency Protocols** — actionable steps for hypoglycemia, hyperglycemia, hypertensive crisis
+- **Family History Risk Factor** — parent/sibling diabetes history assessment
+- **Complication Risk Calculator** — cardiovascular, neuropathy, nephropathy, retinopathy risk
+- **Lifestyle Recommendations** — personalized diet, exercise, weight tips
+- **Medication Impact Warnings** — 14 medications checked (steroids, NSAIDs, etc.)
+- **Comorbidity Assessment** — multi-condition risk multiplier
+- **What If Simulator** — sliders to see how changes affect risk
+- **Gestational Diabetes Module** — ACOG 2024 thresholds for pregnancy
+- **Pediatric Considerations** — adjusted interpretation for children <18
+- **Elderly Adjustments** — relaxed targets for adults >65
+- **Previous Report Comparison** — compare current vs past results
+- **Risk Factor Breakdown** — which factor contributes most to risk
 
 ---
 
@@ -163,7 +148,7 @@ Supported providers: OpenRouter, Google Gemini, DeepSeek, Qwen, Kimi, SiliconFlo
 ```
 src/
   ai_agents.py          AI agent layer (all agents + AIClient + offline fallbacks)
-  clinical_rules.py     deterministic clinical engine (glucose, BP, BMI, lipids, red flags)
+  clinical_rules.py     deterministic clinical engine (15 medical features)
   ml_risk.py            PIMA Random-Forest inference
   report_parser.py      reads lab-report PDFs / images (OCR)
   risk_questionnaire.py FINDRISC lifestyle risk score

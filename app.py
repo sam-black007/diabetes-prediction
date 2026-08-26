@@ -17,6 +17,11 @@ from report_parser import extract_text_from_pdf, extract_text_from_image, parse_
 from clinical_rules import (
     classify_glucose, classify_bp, compute_bmi, classify_lipids,
     aggregate_evidence, severity_rank,
+    a1c_converter, stratify_risk, followup_schedule, emergency_protocols,
+    family_history_risk, complication_risks, lifestyle_recommendations,
+    check_medication_impacts, comorbidity_assessment, whatif_simulate,
+    classify_gestational_glucose, pediatric_adjustments, elderly_adjustments,
+    compare_reports, risk_factor_breakdown,
 )
 from ml_risk import predict_with_model
 
@@ -1681,6 +1686,207 @@ def main():
                            for i, s in enumerate(next_steps)),
                 unsafe_allow_html=True,
             )
+
+            # ---- 1. A1C Converter ----
+            a1c_val = next((r["value"] for r in glucose_rules if r["measurement_type"] == "hba1c"), None)
+            if a1c_val:
+                conv = a1c_converter(a1c=a1c_val)
+                if conv:
+                    st.markdown(
+                        f'<div style="background:#F0F7F4;border:1px solid #B2DFDB;border-radius:10px;'
+                        f'padding:12px 16px;margin:12px 0;">'
+                        f'<div style="font-size:12px;color:#0E7C86;font-weight:600;text-transform:uppercase;">A1C Converter</div>'
+                        f'<div style="font-size:15px;color:#16242B;margin-top:4px;">{conv["interpretation"]}</div>'
+                        f'</div>', unsafe_allow_html=True)
+
+            # ---- 2. Risk Stratification ----
+            risk_strat = stratify_risk(glucose_rules, bp_rule, bmi_rule, lipid_rules, ml, q_age)
+            st.markdown(
+                f'<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
+                f'padding:14px 18px;margin:12px 0;">'
+                f'<div style="font-size:12px;color:#7A8B93;text-transform:uppercase;font-weight:600;">Risk Level</div>'
+                f'<div style="font-size:20px;font-weight:700;color:{risk_strat["color"]};">{risk_strat["level"]}</div>'
+                f'<div style="font-size:13px;color:#41565F;">{risk_strat["interpretation"]}</div>'
+                f'{"<div style=font-size:12px;color:#7A8B93;margin-top:4px;>Factors: " + ", ".join(risk_strat["factors"]) + "</div>" if risk_strat["factors"] else ""}'
+                f'</div>', unsafe_allow_html=True)
+
+            # ---- 3. Follow-up Schedule ----
+            ev = aggregate_evidence(glucose_rules, bp_rule, bmi_rule, lipid_rules)
+            followup = followup_schedule(glucose_rules, bp_rule, ev["overall"]["severity"])
+            st.markdown(
+                f'<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
+                f'padding:14px 18px;margin:12px 0;">'
+                f'<div style="font-size:12px;color:#7A8B93;text-transform:uppercase;font-weight:600;">Follow-up</div>'
+                f'<div style="font-size:16px;font-weight:600;color:{followup["color"]};">{followup["icon"]} {followup["when"]}</div>'
+                f'<div style="font-size:13px;color:#41565F;">{followup["text"]}</div>'
+                f'</div>', unsafe_allow_html=True)
+
+            # ---- 4. Emergency Protocols ----
+            protocols = emergency_protocols(glucose_rules, bp_rule, symptoms)
+            for prot in protocols:
+                actions_html = "".join(f'<div style="font-size:13px;padding:2px 0;">• {a}</div>' for a in prot["action"])
+                st.markdown(
+                    f'<div style="background:#FDECEA;border:2px solid {prot["color"]};border-radius:12px;'
+                    f'padding:14px 18px;margin:12px 0;">'
+                    f'<div style="font-size:15px;font-weight:700;color:{prot["color"]};">🚨 {prot["type"]} — {prot["urgency"]}</div>'
+                    f'{actions_html}'
+                    f'</div>', unsafe_allow_html=True)
+
+            # ---- 5. Family History ----
+            with st.expander("Family History (optional — improves accuracy)", expanded=False):
+                fh_parent = st.checkbox("Parent with diabetes", key="fh_parent")
+                fh_sibling = st.checkbox("Sibling with diabetes", key="fh_sibling")
+                fh_age = st.number_input("Age at parent's diagnosis (if known)", min_value=1, max_value=100, value=None, key="fh_age")
+                if st.button("Assess family risk", key="fh_assess"):
+                    fh_risk = family_history_risk(fh_parent, fh_sibling, fh_age)
+                    st.markdown(f"**{fh_risk['interpretation']}**")
+                    if fh_risk["factors"]:
+                        for f in fh_risk["factors"]:
+                            st.write(f"• {f}")
+
+            # ---- 6. Complication Risks ----
+            comp_risks = complication_risks(glucose_rules, bp_rule, bmi_rule, lipid_rules, q_age)
+            comp_html = ""
+            for name, data in comp_risks.items():
+                bar_color = "#C0392B" if data["level"] == "High" else ("#F9A825" if data["level"] == "Moderate" else "#2E7D32")
+                comp_html += (
+                    f'<div style="display:flex;align-items:center;gap:10px;padding:6px 0;">'
+                    f'<div style="width:110px;font-size:13px;color:#41565F;">{name.title()}</div>'
+                    f'<div style="flex:1;background:#F0F2F4;border-radius:4px;height:8px;">'
+                    f'<div style="width:{data["score"]}%;height:100%;background:{bar_color};border-radius:4px;"></div></div>'
+                    f'<div style="width:60px;font-size:12px;color:{bar_color};font-weight:600;">{data["level"]}</div></div>'
+                )
+            st.markdown(
+                f'<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
+                f'padding:14px 18px;margin:12px 0;">'
+                f'<div style="font-size:12px;color:#7A8B93;text-transform:uppercase;font-weight:600;">Complication Risk</div>'
+                f'{comp_html}'
+                f'</div>', unsafe_allow_html=True)
+
+            # ---- 7. Lifestyle Recommendations ----
+            lifestyle = lifestyle_recommendations(glucose_rules, bp_rule, bmi_rule, lipid_rules, health_score)
+            tips_html = "".join(
+                f'<div style="padding:4px 0;"><span style="font-size:11px;background:#E8F5E9;color:#2E7D32;border-radius:4px;padding:2px 6px;">{t["category"]}</span> '
+                f'<span style="font-size:13px;color:#41565F;">{t["tip"]}</span></div>'
+                for t in lifestyle[:6]
+            )
+            st.markdown(
+                f'<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
+                f'padding:14px 18px;margin:12px 0;">'
+                f'<div style="font-size:12px;color:#7A8B93;text-transform:uppercase;font-weight:600;">Lifestyle Tips</div>'
+                f'{tips_html}'
+                f'</div>', unsafe_allow_html=True)
+
+            # ---- 8. Medication Check ----
+            with st.expander("Medication check (optional)", expanded=False):
+                meds_input = st.text_input("Enter medications (comma-separated)", key="meds_input",
+                                           placeholder="e.g. metformin, lisinopril, ibuprofen")
+                if meds_input and st.button("Check interactions", key="meds_check"):
+                    meds = [m.strip() for m in meds_input.split(",") if m.strip()]
+                    med_results = check_medication_impacts(meds)
+                    for mr in med_results:
+                        sev_color = "#C0392B" if mr["severity"] in ("high",) else ("#F9A825" if mr["severity"] in ("moderate",) else "#2E7D32")
+                        st.markdown(f"**{mr['medication']}**: {mr['effect']} — {mr['advice']}")
+                        st.caption(f"Severity: {mr['severity']}")
+
+            # ---- 9. Comorbidity Assessment ----
+            with st.expander("Comorbidity assessment (optional)", expanded=False):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    com_diabetes = st.checkbox("Diabetes", key="com_dm")
+                    com_hypertension = st.checkbox("Hypertension", key="com_htn")
+                with c2:
+                    com_obesity = com_obesity = st.checkbox("Obesity", key="com_obese")
+                    com_dyslipidemia = st.checkbox("Dyslipidemia", key="com_dyslip")
+                with c3:
+                    com_ckd = st.checkbox("Chronic Kidney Disease", key="com_ckd")
+                    com_heart = st.checkbox("Heart Disease", key="com_hd")
+                if st.button("Assess comorbidities", key="com_assess"):
+                    com_result = comorbidity_assessment(com_diabetes, com_hypertension, com_obesity,
+                                                        com_dyslipidemia, com_ckd, com_heart)
+                    st.markdown(f"**{com_result['interpretation']}**")
+
+            # ---- 10. What If Simulator ----
+            with st.expander("What If Simulator", expanded=False):
+                wi1, wi2, wi3 = st.columns(3)
+                with wi1:
+                    wi_fast_base = st.number_input("Current fasting glucose", 50, 500, int(fast) if fast else 100, key="wi_fast_base")
+                    wi_fast_target = st.number_input("Target fasting glucose", 50, 500, 95, key="wi_fast_target")
+                with wi2:
+                    wi_bp_base = st.number_input("Current SBP", 80, 250, int(sbp) if sbp else 130, key="wi_bp_base")
+                    wi_bp_target = st.number_input("Target SBP", 80, 250, 120, key="wi_bp_target")
+                with wi3:
+                    wi_bmi_base = st.number_input("Current BMI", 15, 60, 28, key="wi_bmi_base")
+                    wi_bmi_target = st.number_input("Target BMI", 15, 60, 24, key="wi_bmi_target")
+                if st.button("Simulate changes", key="wi_sim"):
+                    wi_results = whatif_simulate(wi_fast_base, wi_bp_base, wi_bmi_base,
+                                                 wi_fast_target, wi_bp_target, wi_bmi_target)
+                    for wr in wi_results:
+                        color = "#2E7D32" if wr["improved"] else ("#C0392B" if not wr["same"] else "#7A8B93")
+                        icon = "✅" if wr["improved"] else ("⚠️" if not wr["same"] else "➖")
+                        st.markdown(f"{icon} **{wr['metric']}**: {wr['from']} → {wr['to']} ({wr['from_status']} → {wr['to_status']})")
+
+            # ---- 11. Gestational Diabetes ----
+            with st.expander("Gestational diabetes check (if pregnant)", expanded=False):
+                st.caption("Different thresholds apply during pregnancy (ACOG 2024)")
+                gd_fast = st.number_input("Fasting glucose (mg/dL)", 50, 300, None, key="gd_fast")
+                gd_1h = st.number_input("1-hour post-meal (mg/dL)", 50, 400, None, key="gd_1h")
+                gd_2h = st.number_input("2-hour post-meal (mg/dL)", 50, 350, None, key="gd_2h")
+                if st.button("Check gestational levels", key="gd_check"):
+                    if gd_fast is not None:
+                        r = classify_gestational_glucose(gd_fast, "fasting")
+                        st.markdown(f"**Fasting**: {r['status']} — {r['interpretation']}")
+                    if gd_1h is not None:
+                        r = classify_gestational_glucose(gd_1h, "1h_postmeal")
+                        st.markdown(f"**1-hour post-meal**: {r['status']} — {r['interpretation']}")
+                    if gd_2h is not None:
+                        r = classify_gestational_glucose(gd_2h, "2h_postmeal")
+                        st.markdown(f"**2-hour post-meal**: {r['status']} — {r['interpretation']}")
+
+            # ---- 12. Pediatric Considerations ----
+            if q_age and q_age < 18:
+                ped = pediatric_adjustments(q_age)
+                if ped["applicable"]:
+                    st.markdown(
+                        f'<div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:10px;'
+                        f'padding:12px 16px;margin:12px 0;">'
+                        f'<div style="font-size:12px;color:#1565C0;font-weight:600;">👶 Pediatric Patient</div>'
+                        f'<div style="font-size:13px;color:#16242B;">{ped["interpretation"]}</div>'
+                        f'</div>', unsafe_allow_html=True)
+
+            # ---- 13. Elderly Adjustments ----
+            if q_age and q_age > 65:
+                elder = elderly_adjustments(q_age)
+                if elder["applicable"]:
+                    targets_text = " · ".join(f"{k}: {v}" for k, v in elder["targets"].items())
+                    st.markdown(
+                        f'<div style="background:#FFF3E0;border:1px solid #FFCC80;border-radius:10px;'
+                        f'padding:12px 16px;margin:12px 0;">'
+                        f'<div style="font-size:12px;color:#E65100;font-weight:600;">👴 Elderly Adjustments</div>'
+                        f'<div style="font-size:13px;color:#16242B;">{elder["interpretation"]}</div>'
+                        f'<div style="font-size:12px;color:#7A8B93;margin-top:4px;">Relaxed targets: {targets_text}</div>'
+                        f'</div>', unsafe_allow_html=True)
+
+            # ---- 15. Risk Factor Breakdown ----
+            breakdown = risk_factor_breakdown(glucose_rules, bp_rule, bmi_rule, lipid_rules, ml, age=q_age)
+            if breakdown["factors"]:
+                bd_html = ""
+                max_pts = max(f["contribution"] for f in breakdown["factors"]) or 1
+                for f in breakdown["factors"]:
+                    bar_w = int(f["contribution"] / max_pts * 100)
+                    bd_html += (
+                        f'<div style="display:flex;align-items:center;gap:8px;padding:4px 0;">'
+                        f'<div style="width:100px;font-size:12px;color:#41565F;">{f["factor"]}</div>'
+                        f'<div style="flex:1;background:#F0F2F4;border-radius:3px;height:6px;">'
+                        f'<div style="width:{bar_w}%;height:100%;background:#0E7C86;border-radius:3px;"></div></div>'
+                        f'<div style="width:50px;font-size:11px;color:#7A8B93;">{f["contribution"]} pts</div></div>'
+                    )
+                st.markdown(
+                    f'<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
+                    f'padding:14px 18px;margin:12px 0;">'
+                    f'<div style="font-size:12px;color:#7A8B93;text-transform:uppercase;font-weight:600;">Risk Factor Breakdown</div>'
+                    f'{bd_html}'
+                    f'</div>', unsafe_allow_html=True)
 
             # ---- Completeness card (§22) ----
             provided, missing = [], []
