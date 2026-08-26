@@ -1369,13 +1369,16 @@ def main():
                                      placeholder="120/80")
             with c2:
                 glucose_unit = st.radio("Glucose unit", ["mg/dL", "mmol/L"], horizontal=True, key="qc_unit")
-                factor = 18.0182 if glucose_unit == "mg/dL" else 1.0
-                max_val = 600 if glucose_unit == "mg/dL" else 33.3
-                step_val = 1 if glucose_unit == "mg/dL" else 0.1
-                q_fast = st.number_input(f"Fasting glucose ({glucose_unit})", min_value=1.0,
-                                         max_value=max_val, value=None, step=step_val, key="qc_fast")
-                q_post = st.number_input(f"2-hour post-meal glucose ({glucose_unit})", min_value=1.0,
-                                         max_value=max_val, value=None, step=step_val, key="qc_post")
+                if glucose_unit == "mg/dL":
+                    q_fast = st.number_input("Fasting glucose (mg/dL)", min_value=1,
+                                             max_value=600, value=None, step=1, key="qc_fast")
+                    q_post = st.number_input("2-hour post-meal glucose (mg/dL)", min_value=1,
+                                             max_value=600, value=None, step=1, key="qc_post")
+                else:
+                    q_fast = st.number_input("Fasting glucose (mmol/L)", min_value=0.1,
+                                             max_value=33.3, value=None, step=0.1, key="qc_fast")
+                    q_post = st.number_input("2-hour post-meal glucose (mmol/L)", min_value=0.1,
+                                             max_value=33.3, value=None, step=0.1, key="qc_post")
         with st.expander("Advanced / Diagnostic (for more accurate results)"):
             st.write("Add any you have — each one sharpens the screen.")
             c3, c4 = st.columns(2)
