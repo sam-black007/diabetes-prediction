@@ -85,6 +85,98 @@ def calculate_health_score(glucose_rules, bp_rule, bmi_rule, lipid_rules, ml=Non
 
     score = max(0, min(100, score))
     return score, deductions
+
+
+def make_clinical_pdf(health_score, score_label, glucose_rules, bp_rule, bmi_rule,
+                      lipid_rules, ml, ev, sbp, dbp):
+    """Generate a clean one-page clinical screening PDF."""
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    w, h = A4
+
+    # Header
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(50, h - 60, "Health Screening Report")
+    c.setFont("Helvetica", 10)
+    c.drawString(50, h - 80, f"Diabetes Risk Intelligence · Generated {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    c.drawString(50, h - 94, "Screening only — not a diagnosis. Consult a healthcare provider.")
+
+    y = h - 130
+
+    # Health Score
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(50, y, f"Health Score: {health_score}/100 ({score_label})")
+    y -= 25
+
+    # Measurements
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(50, y, "Measurements")
+    y -= 18
+    c.setFont("Helvetica", 10)
+
+    def draw_row(label, value, unit, status):
+        nonlocal y
+        c.drawString(60, y, f"{label}:")
+        c.drawString(220, y, f"{value} {unit}")
+        c.drawString(350, y, status)
+        y -= 15
+
+    for r in glucose_rules:
+        draw_row(f"Glucose ({r['measurement_type']})", r["value"],
+                 "%" if r["measurement_type"] == "hba1c" else "mg/dL", r["status"])
+    if bp_rule:
+        draw_row("Blood pressure", f"{sbp}/{dbp}", "mmHg", bp_rule["status"])
+    if bmi_rule and bmi_rule["category"] != "missing":
+        draw_row("BMI", f'{bmi_rule["value"]:.1f}', "kg/m²", bmi_rule["status"])
+    for r in lipid_rules:
+        draw_row(r["measurement_type"], r["value"], "mg/dL", r["status"])
+    if ml:
+        draw_row("ML Risk", f'{ml["score"]:.0%}', "", "Elevated" if ml["score"] >= 0.5 else "Lower")
+
+    y -= 10
+
+    # Red flags
+    if ev["red_flags"]:
+        c.setFont("Helvetica-Bold", 11)
+        c.setFillColorRGB(0.75, 0.22, 0.17)
+        c.drawString(50, y, "⚠ URGENT — Seek medical attention")
+        y -= 16
+        c.setFont("Helvetica", 10)
+        for f in ev["red_flags"]:
+            c.drawString(60, y, f"• {f['message']}")
+            y -= 14
+        c.setFillColorRGB(0, 0, 0)
+        y -= 5
+
+    # Interpretation
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(50, y, "Interpretation")
+    y -= 16
+    c.setFont("Helvetica", 10)
+    for r in glucose_rules:
+        if r.get("interpretation"):
+            c.drawString(60, y, f"• {r['measurement_type']}: {r['interpretation'][:90]}")
+            y -= 14
+    if bp_rule and bp_rule.get("interpretation"):
+        c.drawString(60, y, f"• BP: {bp_rule['interpretation'][:90]}")
+        y -= 14
+    if bmi_rule and bmi_rule.get("message"):
+        c.drawString(60, y, f"• BMI: {bmi_rule['message'][:90]}")
+        y -= 14
+
+    y -= 10
+
+    # Disclaimer
+    c.setFont("Helvetica", 8)
+    c.setFillColorRGB(0.48, 0.44, 0.41)
+    c.drawString(50, 40, "This report is for screening and educational purposes only. It is not a medical diagnosis.")
+    c.drawString(50, 28, "Sources: ADA Standards of Care 2026, AHA/ACC BP Guidelines 2025, WHO/IDF consensus.")
+    c.setFillColorRGB(0, 0, 0)
+
+    c.save()
+    return buf.getvalue()
+
+
 _ai_mod = None
 _ai_missing = []
 try:
@@ -824,6 +916,27 @@ def main():
     st.set_page_config(page_title="Diabetes Risk Intelligence", page_icon="🩺", layout="wide")
     st.markdown(PROFESSIONAL_CSS, unsafe_allow_html=True)
 
+    # Dark mode toggle
+    if "dark_mode" not in st.session_state:
+        st.session_state.dark_mode = False
+    dark = st.toggle("🌙 Dark mode", key="dark_toggle")
+    if dark != st.session_state.dark_mode:
+        st.session_state.dark_mode = dark
+        st.rerun()
+    if dark:
+        st.markdown("""
+        <style>
+        .stApp { background: #0E1117; }
+        .section-card { background: #1E2130; border-color: #3A3F4B; }
+        .landing-hero { background: #1E2130; }
+        .landing-card { background: #1E2130; border-color: #3A3F4B; color: #E0E0E0; }
+        .hero { background: #1A1D2E; }
+        [data-testid="stMarkdown"] { color: #E0E0E0; }
+        .stTabs [data-baseweb="tab"] { color: #E0E0E0; }
+        .stButton > button { background: #0E7C86; color: white; }
+        </style>
+        """, unsafe_allow_html=True)
+
     model, scaler, medians, threshold = load_artifacts()
     ai = load_ai()
     if "ai_messages" not in st.session_state:
@@ -1238,10 +1351,14 @@ def main():
                 q_bp = st.text_input("Blood pressure (e.g. 120/80)", key="qc_bp",
                                      placeholder="120/80")
             with c2:
-                q_fast = st.number_input("Fasting glucose (mg/dL)", min_value=20,
-                                         max_value=600, value=None, step=1, key="qc_fast")
-                q_post = st.number_input("2-hour post-meal glucose (mg/dL)", min_value=20,
-                                         max_value=600, value=None, step=1, key="qc_post")
+                glucose_unit = st.radio("Glucose unit", ["mg/dL", "mmol/L"], horizontal=True, key="qc_unit")
+                factor = 18.0182 if glucose_unit == "mg/dL" else 1.0
+                max_val = 600 if glucose_unit == "mg/dL" else 33.3
+                step_val = 1 if glucose_unit == "mg/dL" else 0.1
+                q_fast = st.number_input(f"Fasting glucose ({glucose_unit})", min_value=1.0,
+                                         max_value=max_val, value=None, step=step_val, key="qc_fast")
+                q_post = st.number_input(f"2-hour post-meal glucose ({glucose_unit})", min_value=1.0,
+                                         max_value=max_val, value=None, step=step_val, key="qc_post")
         with st.expander("Advanced / Diagnostic (for more accurate results)"):
             st.write("Add any you have — each one sharpens the screen.")
             c3, c4 = st.columns(2)
@@ -1290,6 +1407,17 @@ def main():
                         pass
             ogtt = q_ogtt if q_ogtt else None
             rand = q_rand if q_rand else None
+
+            # Convert mmol/L to mg/dL if needed
+            if glucose_unit == "mmol/L":
+                if fast is not None:
+                    fast = round(fast * 18.0182)
+                if post is not None:
+                    post = round(post * 18.0182)
+                if ogtt is not None:
+                    ogtt = round(ogtt * 18.0182)
+                if rand is not None:
+                    rand = round(rand * 18.0182)
 
             glucose_rules = []
             if fast is not None:
@@ -1375,9 +1503,14 @@ def main():
             rows = []
             for r in glucose_rules:
                 why = r.get("interpretation", "")
+                display_val = r["value"]
+                display_unit = "mg/dL" if r["measurement_type"] != "hba1c" else "%"
+                if glucose_unit == "mmol/L" and r["measurement_type"] != "hba1c":
+                    display_val = round(r["value"] / 18.0182, 1)
+                    display_unit = "mmol/L"
                 rows.append(_m_row(
-                    f"Glucose ({r['measurement_type']})", r["value"],
-                    "mg/dL" if r["measurement_type"] != "hba1c" else "%",
+                    f"Glucose ({r['measurement_type']})", display_val,
+                    display_unit,
                     r["status"], r["color"], r.get("source", ""), why))
             if bp_rule:
                 rows.append(_m_row(
@@ -1432,12 +1565,28 @@ def main():
             else:
                 score_color, score_label = "#C0392B", "Needs attention"
             score_bar_width = health_score
+
+            # SVG circular gauge
+            radius = 54
+            circumference = 2 * 3.14159 * radius
+            offset = circumference * (1 - health_score / 100)
+            gauge_svg = (
+                f'<svg width="140" height="140" viewBox="0 0 140 140">'
+                f'<circle cx="70" cy="70" r="{radius}" fill="none" stroke="#F0F2F4" stroke-width="10"/>'
+                f'<circle cx="70" cy="70" r="{radius}" fill="none" stroke="{score_color}" stroke-width="10"'
+                f' stroke-dasharray="{circumference}" stroke-dashoffset="{offset}"'
+                f' stroke-linecap="round" transform="rotate(-90 70 70)"/>'
+                f'<text x="70" y="66" text-anchor="middle" font-size="28" font-weight="700" fill="{score_color}">{health_score}</text>'
+                f'<text x="70" y="86" text-anchor="middle" font-size="11" fill="#7A8B93">/ 100</text>'
+                f'</svg>'
+            )
+
             st.markdown(
                 f'<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
                 f'padding:18px 20px;margin:0 0 16px;">'
                 f'<div style="font-size:12px;color:#7A8B93;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px;">Health Score</div>'
-                f'<div style="display:flex;align-items:center;gap:16px;">'
-                f'<div style="font-size:42px;font-weight:700;color:{score_color};line-height:1;">{health_score}</div>'
+                f'<div style="display:flex;align-items:center;gap:20px;">'
+                f'{gauge_svg}'
                 f'<div><div style="font-size:16px;font-weight:600;color:{score_color};">{score_label}</div>'
                 f'<div style="font-size:12px;color:#7A8B93;">out of 100</div></div></div>'
                 f'<div style="background:#F0F2F4;border-radius:6px;height:8px;margin-top:12px;">'
@@ -1471,6 +1620,18 @@ def main():
                 file_name="health_card.txt",
                 mime="text/plain",
                 key="dl_card",
+            )
+
+            # PDF report export
+            pdf_bytes = make_clinical_pdf(
+                health_score, score_label, glucose_rules, bp_rule, bmi_rule,
+                lipid_rules, ml, ev, sbp, dbp)
+            st.download_button(
+                "⬇ Download PDF Report",
+                data=pdf_bytes,
+                file_name="health_screening_report.pdf",
+                mime="application/pdf",
+                key="dl_pdf",
             )
 
             # ---- ML score ----
