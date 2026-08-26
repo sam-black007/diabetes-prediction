@@ -854,26 +854,34 @@ def main():
                     st.rerun()
             else:
                 with st.popover("Sign in", key="btn_signin"):
-                    auth_tab = st.radio("Login or Sign up", ["Login", "Sign up"], horizontal=True)
-                    email = st.text_input("Email", key="auth_email")
-                    password = st.text_input("Password", type="password", key="auth_pass")
-                    if auth_tab == "Login":
-                        if st.button("Login", key="btn_login"):
-                            user, err = db.sign_in_with_email(email, password)
-                            if user:
-                                st.session_state.user = user
-                                st.rerun()
-                            else:
-                                st.error(err or "Login failed")
+                    auth_tab = st.radio("Login or Sign up", ["Google", "Email"], horizontal=True)
+                    if auth_tab == "Google":
+                        url = db.sign_in_with_google()
+                        if url:
+                            st.link_button("Continue with Google", url)
+                        else:
+                            st.error("Google auth not available")
                     else:
-                        if st.button("Create account", key="btn_signup"):
-                            user, err = db.sign_up_with_email(email, password)
-                            if user:
-                                st.session_state.user = user
-                                st.success("Account created!")
-                                st.rerun()
-                            else:
-                                st.error(err or "Signup failed")
+                        email = st.text_input("Email", key="auth_email")
+                        password = st.text_input("Password", type="password", key="auth_pass")
+                        login_col, signup_col = st.columns(2)
+                        with login_col:
+                            if st.button("Login", key="btn_login"):
+                                user, err = db.sign_in_with_email(email, password)
+                                if user:
+                                    st.session_state.user = user
+                                    st.rerun()
+                                else:
+                                    st.error(err or "Login failed")
+                        with signup_col:
+                            if st.button("Sign up", key="btn_signup"):
+                                user, err = db.sign_up_with_email(email, password)
+                                if user:
+                                    st.session_state.user = user
+                                    st.success("Account created!")
+                                    st.rerun()
+                                else:
+                                    st.error(err or "Signup failed")
     
     if page == "home":
         # ---- Landing page ----
