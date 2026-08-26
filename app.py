@@ -853,12 +853,27 @@ def main():
                     st.session_state.user = None
                     st.rerun()
             else:
-                if st.button("Sign in", key="btn_signin"):
-                    url = db.sign_in_with_google()
-                    if url:
-                        st.markdown(f'[Click here to sign in with Google]({url})', unsafe_allow_html=True)
+                with st.popover("Sign in", key="btn_signin"):
+                    auth_tab = st.radio("Login or Sign up", ["Login", "Sign up"], horizontal=True)
+                    email = st.text_input("Email", key="auth_email")
+                    password = st.text_input("Password", type="password", key="auth_pass")
+                    if auth_tab == "Login":
+                        if st.button("Login", key="btn_login"):
+                            user, err = db.sign_in_with_email(email, password)
+                            if user:
+                                st.session_state.user = user
+                                st.rerun()
+                            else:
+                                st.error(err or "Login failed")
                     else:
-                        st.info("Supabase not configured yet. Set SUPABASE_URL and SUPABASE_KEY.")
+                        if st.button("Create account", key="btn_signup"):
+                            user, err = db.sign_up_with_email(email, password)
+                            if user:
+                                st.session_state.user = user
+                                st.success("Account created!")
+                                st.rerun()
+                            else:
+                                st.error(err or "Signup failed")
     
     if page == "home":
         # ---- Landing page ----
