@@ -24,6 +24,67 @@ from ml_risk import predict_with_model
 # momentarily load against a stale module version. Bind each function
 # individually so only genuinely-missing features degrade — never the app.
 import importlib as _importlib
+
+def calculate_health_score(glucose_rules, bp_rule, bmi_rule, lipid_rules, ml=None):
+    """Calculate a 0-100 health score. Higher = healthier."""
+    score = 100
+    deductions = []
+
+    # Glucose scoring (max -35)
+    if glucose_rules:
+        worst_g = max(glucose_rules, key=lambda r: severity_rank(r["severity"]))
+        g_deductions = {
+            "emergency": 35, "critical": 35, "severe": 30, "high": 25,
+            "stage2": 25, "stage1": 15, "moderate": 15, "elevated": 10,
+            "low": 15, "normal": 0
+        }
+        d = g_deductions.get(worst_g["severity"], 0)
+        score -= d
+        if d > 0:
+            deductions.append(f"Glucose: -{d}")
+
+    # Blood pressure scoring (max -25)
+    if bp_rule:
+        bp_deductions = {
+            "emergency": 25, "critical": 25, "severe": 25, "stage2": 20,
+            "stage1": 10, "elevated": 5, "low": 10, "normal": 0
+        }
+        d = bp_deductions.get(bp_rule["severity"], 0)
+        score -= d
+        if d > 0:
+            deductions.append(f"BP: -{d}")
+
+    # BMI scoring (max -20)
+    if bmi_rule and bmi_rule["category"] != "missing":
+        bmi_deductions = {
+            "obese_class3": 20, "obese_class2": 18, "obese_class1": 14,
+            "overweight": 8, "normal": 0, "underweight": 10
+        }
+        d = bmi_deductions.get(bmi_rule.get("category", ""), 0)
+        score -= d
+        if d > 0:
+            deductions.append(f"BMI: -{d}")
+
+    # Lipid scoring (max -15)
+    if lipid_rules:
+        worst_lipid = max(lipid_rules, key=lambda r: severity_rank(r["severity"]))
+        lipid_deductions = {
+            "high": 15, "moderate": 10, "borderline": 5, "normal": 0
+        }
+        d = lipid_deductions.get(worst_lipid["severity"], 0)
+        score -= d
+        if d > 0:
+            deductions.append(f"Lipids: -{d}")
+
+    # ML model adjustment (max -5)
+    if ml and ml["score"] >= 0.5:
+        ml_d = min(5, int((ml["score"] - 0.5) * 10))
+        score -= ml_d
+        if ml_d > 0:
+            deductions.append(f"ML risk: -{ml_d}")
+
+    score = max(0, min(100, score))
+    return score, deductions
 _ai_mod = None
 _ai_missing = []
 try:
@@ -1358,6 +1419,59 @@ def main():
                     f'</div>',
                     unsafe_allow_html=True,
                 )
+
+            # ---- Health Score (0-100) ----
+            health_score, score_deductions = calculate_health_score(
+                glucose_rules, bp_rule, bmi_rule, lipid_rules, ml)
+            if health_score >= 80:
+                score_color, score_label = "#2E7D32", "Excellent"
+            elif health_score >= 60:
+                score_color, score_label = "#F9A825", "Good"
+            elif health_score >= 40:
+                score_color, score_label = "#E67E22", "Fair"
+            else:
+                score_color, score_label = "#C0392B", "Needs attention"
+            score_bar_width = health_score
+            st.markdown(
+                f'<div style="background:#fff;border:1px solid #E3EBEF;border-radius:12px;'
+                f'padding:18px 20px;margin:0 0 16px;">'
+                f'<div style="font-size:12px;color:#7A8B93;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px;">Health Score</div>'
+                f'<div style="display:flex;align-items:center;gap:16px;">'
+                f'<div style="font-size:42px;font-weight:700;color:{score_color};line-height:1;">{health_score}</div>'
+                f'<div><div style="font-size:16px;font-weight:600;color:{score_color};">{score_label}</div>'
+                f'<div style="font-size:12px;color:#7A8B93;">out of 100</div></div></div>'
+                f'<div style="background:#F0F2F4;border-radius:6px;height:8px;margin-top:12px;">'
+                f'<div style="width:{score_bar_width}%;height:100%;background:{score_color};border-radius:6px;"></div></div>'
+                f'{"<div style=font-size:12px;color:#7A8B93;margin-top:8px;>" + " · ".join(score_deductions) + "</div>" if score_deductions else ""}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            # ---- Shareable Health Card ----
+            card_lines = [f"Health Score: {health_score}/100 ({score_label})"]
+            for r in glucose_rules:
+                card_lines.append(f"{r['measurement_type']}: {r['value']} — {r['status']}")
+            if bp_rule:
+                card_lines.append(f"BP: {sbp}/{dbp} — {bp_rule['status']}")
+            if bmi_rule:
+                card_lines.append(f"BMI: {bmi_rule['value']:.1f} — {bmi_rule['status']}")
+            for r in lipid_rules:
+                card_lines.append(f"{r['measurement_type']}: {r['value']} — {r['status']}")
+            if ml:
+                card_lines.append(f"ML Risk: {ml['score']:.0%}")
+            if ev["red_flags"]:
+                card_lines.append("RED FLAGS: " + "; ".join(f["message"] for f in ev["red_flags"]))
+            card_lines.append("Screening only — not a diagnosis")
+            card_lines.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+            card_text = "\n".join(card_lines)
+
+            st.download_button(
+                "⬇ Share Health Card",
+                data=card_text,
+                file_name="health_card.txt",
+                mime="text/plain",
+                key="dl_card",
+            )
 
             # ---- ML score ----
             if ml:
