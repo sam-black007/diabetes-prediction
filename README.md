@@ -6,70 +6,134 @@ A diabetes risk screening tool that combines clinical rules (ADA 2026, AHA-ACC 2
 
 ---
 
-## What it does
+## Version History
 
-- **Quick Health Check** — enter a few values (weight, height, glucose, blood pressure) and get an instant screening result with clinical classification
-- **Medical Report Upload** — upload a PDF or photo of a lab report; OCR reads the values, the AI validates them, and you get a risk assessment
-- **AI Clinical Assistant** — ask questions about diabetes risk, blood pressure, lifestyle, or anything health-related
+### v1.0 — Core Screening Engine
+*Initial release*
 
-The app works offline too — clinical rules run locally, the AI only explains the result.
+- **Quick Health Check** — enter glucose, blood pressure, BMI, lipids → instant clinical screening
+- **Medical Report Upload** — OCR reads PDF/lab reports, AI validates values
+- **AI Clinical Assistant** — ask questions about diabetes, BP, lifestyle
+- **Clinical rules engine** — ADA 2026 glucose thresholds, AHA/ACC 2025 BP guidelines
+- **PIMA Random Forest model** — 77.9% accuracy, supplementary risk score
+- **Offline-capable** — clinical rules run locally, AI only explains results
+
+### v1.1 — UI/UX Overhaul
+*Task-oriented redesign*
+
+- **Task-oriented landing page** — 3 entry points (Check, Upload, Ask AI)
+- **Step-by-step progress indicator** — 1→2→3 flow in Health Check
+- **Measurement result cards** — value + unit + interpretation + source
+- **OCR confidence indicators** — green/yellow/red per field
+- **Editable report review** — correct OCR mistakes before assessment
+- **Completeness bar** — visual progress of measured vs missing values
+- **Micro-explanations** — 💬 why under each result
+- **Emergency banner** — red banner for urgent symptoms
+- **Suggested prompts** — clickable AI chat starters
+- **Download summary** — plain-text screening report
+- **Mobile-responsive** — stacked layout, scaled fonts
+- **Focus-visible outlines** — keyboard accessibility
+- **Empty states** — friendly placeholders
+- **Graceful error handling** — clear AI failure messages
+
+### v1.2 — Clinical Accuracy
+*Blood pressure & red flags*
+
+- **Single blood pressure input** — supports `120/80` and `120\80` formats
+- **Independent SBP/DBP OR-logic** — Stage 2 if either number is high
+- **Hypertensive emergency detection** — BP + symptoms = urgent escalation
+- **Red-flag engine** — glucose 400+, emergency BP, critical values
+- **Source citations** — ADA 2026, AHA-ACC 2025 on every measurement
+- **19 edge-case tests** — clinical rules fully tested
+
+### v1.3 — AI & Accessibility
+*AI reliability & user experience*
+
+- **Resilient AI module binding** — app works even if AI module fails to load
+- **Offline AI fallback** — clear "unavailable" message instead of crash
+- **AI timeout increase** — 30s timeout with 2 retries
+- **Graceful provider errors** — AuthenticationError, NotFoundError handled
+- **Multi-provider support** — OpenRouter, Google Gemini, DeepSeek, Qwen, Kimi
+- **CSS animation removal** — no hover effects, transitions, or keyframes
+
+### v1.4 — Health Score & Sharing
+*Scoring & export*
+
+- **Health Score (0-100)** — single number combining all metrics
+- **SVG circular gauge** — animated visual risk indicator
+- **Shareable Health Card** — text export with all results
+- **PDF Report Export** — clean one-page clinical screening PDF
+- **Print-friendly CSS** — hides sidebar/buttons on Ctrl+P
+
+### v1.5 — Unit Converter & Dark Mode
+*User preferences*
+
+- **Blood sugar unit converter** — toggle mg/dL ↔ mmol/L
+- **Glucose values auto-convert** — input in either unit, results show correctly
+- **Dark mode toggle** — 🌙 switch between light and dark themes
+- **Auto-save results** — screening saved to local history
+
+### v2.0 — Database & Authentication (Planned)
+*Cloud sync & user accounts*
+
+- Supabase PostgreSQL integration
+- Google OAuth + email/password login
+- Screening history saved to cloud
+- Trend charts (glucose/BP/weight over time)
+- Achievement badges
+- Daily health challenges
+- Family history module
+- Medication checker
+
+### v3.0 — AI-Powered Wellness (Planned)
+*Smart health coaching*
+
+- AI meal photo analysis (snap a plate → estimate carbs)
+- Personalized meal plans based on risk profile
+- Predictive glucose alerts (30-min lookahead)
+- Sleep-glucose correlation tracking
+- Stress management suggestions
+- What If Simulator (sliders → live risk changes)
+- A1C ↔ average glucose calculator
+
+### v4.0 — Social & Community (Planned)
+*Engagement & motivation*
+
+- Anonymous leaderboard
+- Accountability partner system
+- Community challenges (30-day step challenge)
+- Patient success stories
+- Daily health challenges with streaks
+- Shareable health cards (WhatsApp/Telegram)
+- Health Score history wall
 
 ---
 
-## UI Enhancements
+## Clinical Rules Engine
 
-The interface was redesigned for clarity, trust, and mobile-friendliness:
+Every verdict comes from a single, transparent, offline rules layer (`src/clinical_rules.py`), not from the LLM.
 
-- **Task-oriented landing page** — three entry points (Check My Health, Upload Report, Ask AI) instead of tab-first navigation
-- **Step-by-step progress indicator** — 1, 2, 3 flow in Quick Health Check so users know where they are
-- **Measurement result cards** — each value shows the number, unit, interpretation, and clinical source (e.g. ADA 2026)
-- **OCR confidence indicators** — green (detected), yellow (please verify), red (could not read) for every field in a scanned report
-- **Editable report review** — users can correct OCR mistakes before running the assessment
-- **Completeness bar** — visual progress showing what was measured vs what's missing
-- **Micro-explanations** — a short why under each result so users understand the classification
-- **Emergency banner** — dedicated red banner for urgent symptoms (high BP + chest pain, etc.)
-- **Suggested prompts** — clickable starter questions in the AI chat that trigger the agent immediately
-- **Download summary** — plain-text screening report users can save or share with their doctor
-- **Mobile-responsive** — stacked layout, scaled fonts, touch-friendly spacing on narrow screens
-- **Focus-visible outlines** — keyboard navigation support for accessibility
-- **Empty states** — friendly placeholder messages when no data is uploaded yet
-- **Graceful error handling** — clear messages when the AI service is unavailable
+- **Glucose** — measurement-type aware (fasting, post-meal, HbA1c, OGTT, random) with ADA 2026 thresholds
+- **Blood pressure** — independent SBP/DBP OR-logic (AHA/ACC 2025)
+- **BMI** — computed from height + weight
+- **Lipids** — LDL-C, HDL-C, triglycerides scored independently
+- **Red-flag engine** — glucose 400+, BP emergency + symptoms surfaced first
 
 ---
 
-## Clinical rules engine
+## ML Model Accuracy
 
-Every verdict comes from a single, transparent, offline rules layer (`src/clinical_rules.py`), not from the LLM. The AI only explains the result in plain language.
+| Model | Accuracy | Precision | Recall | F1 |
+|-------|----------|-----------|--------|-----|
+| Logistic Regression | 70.8% | 60.0% | 50.0% | 0.55 |
+| SVM (tuned) | 74.0% | 65.2% | 55.6% | 0.60 |
+| **Random Forest (tuned)** | **77.9%** | **71.7%** | **61.1%** | **0.66** |
 
-- **Glucose is measurement-type aware.** Fasting, 2-hour post-meal, HbA1c, OGTT, and random glucose are classified by their own thresholds (ADA 2026), with explicit hypoglycemia tiers
-- **Blood pressure uses independent SBP / DBP OR logic** (AHA/ACC 2025): a reading is Stage 2 if either number is high, and a severe reading with urgent symptoms is escalated to hypertensive emergency
-- **BMI** is computed from height + weight
-- **Lipids** (LDL-C, HDL-C, triglycerides) are scored independently when provided
-- **Red-flag engine** surfaces emergencies (glucose 400+, BP emergency + symptoms) up front
-
-The PIMA Random Forest model (`data/processed/best_model.joblib`) runs as a supplementary research/baseline score (77.9% accuracy, 61% recall).
+This is screening, not diagnosis. A positive result means "worth confirming with a clinician."
 
 ---
 
-## What's next
-
-Planned for upcoming releases:
-
-- **Multi-language support** — Hindi, Tamil, Telugu, and other regional languages for wider accessibility
-- **PDF report generation** — download a formatted screening report with charts and clinical references
-- **Trend tracking** — save results over time and show glucose/BP trends with charts
-- **Family history module** — add family diabetes history as a risk factor
-- **Medication interaction checker** — flag common diabetes medication interactions
-- **Doctor share link** — generate a shareable link for your clinician to review results
-- **Voice input** — speak your values instead of typing (accessibility improvement)
-- **Dark mode** — alternative color scheme for low-light environments
-- **Offline PWA** — install as a progressive web app for use without internet
-- **Additional ML models** — XGBoost, neural networks, and ensemble methods for comparison
-- **Integration with health apps** — import data from Google Fit, Apple Health, or Fitbit
-
----
-
-## How to run
+## How to Run
 
 ```bash
 pip install -r requirements.txt
@@ -90,23 +154,11 @@ AI_API_KEY=sk-or-v1-...
 AI_MODEL=deepseek/deepseek-chat-v3-0324:free
 ```
 
-Supported providers: OpenRouter, Google Gemini, DeepSeek, Qwen, Kimi, SiliconFlow, OpenAI. The app auto-detects the provider from the API key prefix.
+Supported providers: OpenRouter, Google Gemini, DeepSeek, Qwen, Kimi, SiliconFlow, OpenAI.
 
 ---
 
-## Accuracy
-
-| Model | Accuracy | Precision | Recall | F1 |
-|-------|----------|-----------|--------|-----|
-| Logistic Regression | 70.8% | 60.0% | 50.0% | 0.55 |
-| SVM (tuned) | 74.0% | 65.2% | 55.6% | 0.60 |
-| **Random Forest (tuned)** | **77.9%** | **71.7%** | **61.1%** | **0.66** |
-
-This is screening, not diagnosis. A positive result means "worth confirming with a clinician."
-
----
-
-## Project structure
+## Project Structure
 
 ```
 src/

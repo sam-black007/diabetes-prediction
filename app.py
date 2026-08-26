@@ -821,6 +821,18 @@ body {
 [data-testid="stChatMessageAvatar"] {
     background: #0E7C86 !important; border: none !important;
 }
+
+/* Print-friendly: hide non-essential UI when printing */
+@media print {
+    header, footer, [data-testid="stSidebar"], [data-testid="stToolbar"],
+    .stButton, .stDownloadButton, [data-testid="stChatInput"],
+    [data-testid="stDecoration"], #MainMenu, #stHeader {
+        display: none !important;
+    }
+    .stApp { padding: 0 !important; }
+    .section-card, .landing-card { break-inside: avoid; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
 </style>
 """
 
