@@ -19,6 +19,7 @@ from clinical_rules import (
     aggregate_evidence, severity_rank,
 )
 from ml_risk import predict_with_model
+import database as db
 
 # Resilient AI-module binding: during a Streamlit Cloud rebuild the app can
 # momentarily load against a stale module version. Bind each function
@@ -829,10 +830,36 @@ def main():
     if "ai_messages" not in st.session_state:
         st.session_state.ai_messages = []
 
+    # ---- Supabase Auth ----
+    user = db.get_current_user() if db.is_configured() else None
+    if "user" not in st.session_state:
+        st.session_state.user = user
+    if st.session_state.user:
+        user = st.session_state.user
+
     if "page" not in st.session_state:
         st.session_state.page = "home"
     page = st.session_state.page
 
+    # ---- Auth bar (top right) ----
+    if db.is_configured():
+        auth_cols = st.columns([6, 1])
+        with auth_cols[1]:
+            if st.session_state.user:
+                email = st.session_state.user.email or "user"
+                st.caption(f"👤 {email[:20]}")
+                if st.button("Logout", key="btn_logout"):
+                    db.sign_out()
+                    st.session_state.user = None
+                    st.rerun()
+            else:
+                if st.button("Sign in", key="btn_signin"):
+                    url = db.sign_in_with_google()
+                    if url:
+                        st.markdown(f'[Click here to sign in with Google]({url})', unsafe_allow_html=True)
+                    else:
+                        st.info("Supabase not configured yet. Set SUPABASE_URL and SUPABASE_KEY.")
+    
     if page == "home":
         # ---- Landing page ----
         st.markdown(
@@ -856,6 +883,11 @@ def main():
         with c3:
             if st.button("Ask AI Assistant", key="home_ai", use_container_width=True):
                 st.session_state.page = "assistant"
+                st.rerun()
+
+        if db.is_configured() and st.session_state.user:
+            if st.button("My Health Trends", key="home_trends", use_container_width=True):
+                st.session_state.page = "trends"
                 st.rerun()
 
         st.markdown(
@@ -1473,6 +1505,31 @@ def main():
                 key="dl_card",
             )
 
+            # ---- Auto-save screening to Supabase ----
+            if db.is_configured() and st.session_state.user:
+                worst_sev = "normal"
+                all_rules = glucose_rules + ([bp_rule] if bp_rule else []) + ([bmi_rule] if bmi_rule else []) + lipid_rules
+                if all_rules:
+                    worst_sev = max((r.get("severity", "normal") for r in all_rules), key=severity_rank)
+                screening_data = {
+                    "fasting_glucose": next((r["value"] for r in glucose_rules if r["measurement_type"] == "fasting"), None),
+                    "postmeal_glucose": next((r["value"] for r in glucose_rules if r["measurement_type"] == "postmeal"), None),
+                    "hba1c": next((r["value"] for r in glucose_rules if r["measurement_type"] == "hba1c"), None),
+                    "sbp": sbp if sbp else None,
+                    "dbp": dbp if dbp else None,
+                    "bmi": round(bmi_rule["value"], 1) if bmi_rule and bmi_rule["category"] != "missing" else None,
+                    "ldl": next((r["value"] for r in lipid_rules if r["measurement_type"] == "ldl"), None),
+                    "hdl": next((r["value"] for r in lipid_rules if r["measurement_type"] == "hdl"), None),
+                    "triglycerides": next((r["value"] for r in lipid_rules if r["measurement_type"] == "triglycerides"), None),
+                    "health_score": health_score,
+                    "worst_severity": worst_sev,
+                    "ml_score": round(ml["score"], 3) if ml else None,
+                    "red_flags": [f["message"] for f in ev["red_flags"]],
+                }
+                if st.session_state.get("_last_screening") != screening_data:
+                    db.save_screening(st.session_state.user.id, screening_data)
+                    st.session_state["_last_screening"] = screening_data
+
             # ---- ML score ----
             if ml:
                 ml_label = "Elevated" if ml["score"] >= threshold else "Lower"
@@ -1757,6 +1814,73 @@ def main():
                 with st.spinner("Researching..."):
                     research = web_research_agent(query, ai)
                 st.markdown(research)
+
+    elif page == "trends" and db.is_configured() and st.session_state.user:
+        # ---- Health Trends Page ----
+        st.markdown(
+            '<div class="landing-hero">'
+            '<h1>My Health Trends</h1>'
+            '<p class="sub">Track your health score and measurements over time.</p>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("← Back to Home", key="trends_back"):
+            st.session_state.page = "home"
+            st.rerun()
+
+        user_id = st.session_state.user.id
+        trends = db.get_screening_trends(user_id, days=90)
+        history = db.get_screening_history(user_id, limit=20)
+
+        if not trends or not trends.get("dates"):
+            st.info("No screenings saved yet. Complete a health check to see your trends here.")
+        else:
+            df = pd.DataFrame(trends)
+            df["dates"] = pd.to_datetime(df["dates"])
+
+            # Health Score trend
+            st.subheader("Health Score Over Time")
+            chart_data = df[["dates", "health_scores"]].dropna()
+            if len(chart_data) > 1:
+                st.line_chart(chart_data.set_index("dates")["health_scores"], height=300)
+            else:
+                st.caption("Need at least 2 screenings to show a trend.")
+
+            # Glucose trend
+            glucose_cols = ["dates", "fasting_glucose", "postmeal_glucose"]
+            glucose_df = df[glucose_cols].dropna(how="all")
+            if len(glucose_df) > 1:
+                st.subheader("Glucose Over Time")
+                st.line_chart(glucose_df.set_index("dates")[["fasting_glucose", "postmeal_glucose"]], height=300)
+
+            # Blood Pressure trend
+            bp_cols = ["dates", "sbp", "dbp"]
+            bp_df = df[bp_cols].dropna(how="all")
+            if len(bp_df) > 1:
+                st.subheader("Blood Pressure Over Time")
+                st.line_chart(bp_df.set_index("dates")[["sbp", "dbp"]], height=300)
+
+            # BMI trend
+            bmi_df = df[["dates", "bmi"]].dropna()
+            if len(bmi_df) > 1:
+                st.subheader("BMI Over Time")
+                st.line_chart(bmi_df.set_index("dates")["bmi"], height=300)
+
+            # Screening history table
+            st.subheader("Recent Screenings")
+            if history:
+                rows = []
+                for h in history:
+                    rows.append({
+                        "Date": h.get("created_at", "")[:10],
+                        "Score": h.get("health_score", "—"),
+                        "Fasting Glucose": h.get("fasting_glucose", "—"),
+                        "BP": f"{h.get('sbp', '—')}/{h.get('dbp', '—')}",
+                        "BMI": h.get("bmi", "—"),
+                        "ML Risk": f"{h.get('ml_score', 0):.0%}" if h.get("ml_score") else "—",
+                        "Severity": h.get("worst_severity", "—"),
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.caption("Diabetes Risk Intelligence · for screening & education only, not a diagnosis.")
