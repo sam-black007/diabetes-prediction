@@ -140,8 +140,8 @@ class AIClient:
                 self._client = OpenAI(
                     api_key=API_KEY,
                     base_url=base_url,
-                    timeout=15,
-                    max_retries=1,
+                    timeout=30,
+                    max_retries=2,
                 )
                 trunc = f" [key looks truncated, len={len(API_KEY)}]" if len(API_KEY) < 40 else ""
                 self.status_detail = f"connected to {base_url}{trunc}"
