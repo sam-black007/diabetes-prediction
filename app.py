@@ -943,14 +943,195 @@ def main():
     if dark:
         st.markdown("""
         <style>
-        .stApp { background: #0E1117; }
-        .section-card { background: #1E2130; border-color: #3A3F4B; }
-        .landing-hero { background: #1E2130; }
-        .landing-card { background: #1E2130; border-color: #3A3F4B; color: #E0E0E0; }
-        .hero { background: #1A1D2E; }
-        [data-testid="stMarkdown"] { color: #E0E0E0; }
-        .stTabs [data-baseweb="tab"] { color: #E0E0E0; }
-        .stButton > button { background: #0E7C86; color: white; }
+        /* Main background */
+        .stApp, [data-testid="stAppViewContainer"], .main .block-container {
+            background-color: #0E1117 !important;
+            color: #FAFAFA !important;
+        }
+
+        /* Sidebar */
+        [data-testid="stSidebar"] {
+            background-color: #161B22 !important;
+        }
+        [data-testid="stSidebar"] .stMarkdown {
+            color: #E6EDF3 !important;
+        }
+
+        /* Text colors */
+        .stMarkdown, .stMarkdown p, .stMarkdown li, .stMarkdown h1,
+        .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5,
+        .stMarkdown h6, [data-testid="stMarkdownContainer"] {
+            color: #E6EDF3 !important;
+        }
+        .stCaption, .stCaption p, [data-testid="stCaptionContainer"] {
+            color: #8B949E !important;
+        }
+
+        /* Headings */
+        h1, h2, h3, h4, h5, h6 { color: #F0F6FC !important; }
+
+        /* Radio buttons */
+        .stRadio label, .stRadio span, [data-testid="stRadio"] label {
+            color: #E6EDF3 !important;
+        }
+        .stRadio [data-baseweb="radio"] {
+            background-color: #21262D !important;
+            border-color: #30363D !important;
+        }
+        .stRadio [aria-checked="true"] {
+            background-color: #0E7C86 !important;
+        }
+
+        /* Checkboxes */
+        .stCheckbox label, [data-testid="stCheckbox"] label {
+            color: #E6EDF3 !important;
+        }
+
+        /* Text inputs */
+        .stTextInput input, .stNumberInput input, .stTextArea textarea {
+            background-color: #0D1117 !important;
+            color: #E6EDF3 !important;
+            border-color: #30363D !important;
+        }
+        .stTextInput input:focus, .stNumberInput input:focus {
+            border-color: #0E7C86 !important;
+        }
+        .stTextInput label, .stNumberInput label, .stTextArea label {
+            color: #8B949E !important;
+        }
+
+        /* Selectbox / Dropdown */
+        .stSelectbox label, [data-testid="stSelectbox"] label {
+            color: #8B949E !important;
+        }
+        [data-baseweb="select"] {
+            background-color: #0D1117 !important;
+        }
+        [data-baseweb="select"] span {
+            color: #E6EDF3 !important;
+        }
+        [data-baseweb="option"] {
+            background-color: #161B22 !important;
+            color: #E6EDF3 !important;
+        }
+
+        /* Buttons */
+        .stButton > button {
+            background-color: #0E7C86 !important;
+            color: #FFFFFF !important;
+            border: none !important;
+        }
+        .stButton > button:hover {
+            background-color: #0A5F66 !important;
+        }
+        .stDownloadButton > button {
+            background-color: #21262D !important;
+            color: #E6EDF3 !important;
+            border: 1px solid #30363D !important;
+        }
+
+        /* Expander */
+        .streamlit-expanderHeader, [data-testid="stExpander"] summary {
+            color: #E6EDF3 !important;
+            background-color: #161B22 !important;
+        }
+        .streamlit-expanderContent, [data-testid="stExpander"] div {
+            background-color: #0D1117 !important;
+        }
+
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            background-color: #161B22 !important;
+        }
+        .stTabs [data-baseweb="tab"] {
+            color: #8B949E !important;
+        }
+        .stTabs [aria-selected="true"] {
+            color: #0E7C86 !important;
+            border-bottom-color: #0E7C86 !important;
+        }
+
+        /* Chat messages */
+        [data-testid="stChatMessage"] {
+            background-color: #161B22 !important;
+            border-color: #30363D !important;
+        }
+        [data-testid="stChatMessageContent"] {
+            color: #E6EDF3 !important;
+        }
+        [data-testid="stChatInput"] textarea {
+            background-color: #0D1117 !important;
+            color: #E6EDF3 !important;
+            border-color: #30363D !important;
+        }
+
+        /* Tables */
+        .stDataFrame, [data-testid="stDataFrame"] {
+            background-color: #0D1117 !important;
+        }
+        [data-testid="stDataFrame"] th {
+            background-color: #161B22 !important;
+            color: #E6EDF3 !important;
+        }
+        [data-testid="stDataFrame"] td {
+            color: #E6EDF3 !important;
+        }
+
+        /* Metrics */
+        [data-testid="stMetric"] {
+            background-color: #161B22 !important;
+            border-color: #30363D !important;
+        }
+        [data-testid="stMetricLabel"] {
+            color: #8B949E !important;
+        }
+        [data-testid="stMetricValue"] {
+            color: #E6EDF3 !important;
+        }
+
+        /* Progress bar */
+        .stProgress > div > div {
+            background-color: #0E7C86 !important;
+        }
+
+        /* Dividers */
+        hr {
+            border-color: #30363D !important;
+        }
+
+        /* Popover */
+        [data-testid="stPopover"] {
+            background-color: #161B22 !important;
+        }
+
+        /* Custom cards */
+        .section-card, .landing-card {
+            background-color: #161B22 !important;
+            border-color: #30363D !important;
+        }
+        .section-card p, .section-card div, .landing-card p, .landing-card div {
+            color: #E6EDF3 !important;
+        }
+
+        /* Hero */
+        .hero, .landing-hero {
+            background-color: #161B22 !important;
+            color: #F0F6FC !important;
+        }
+        .hero h1, .landing-hero h1 { color: #F0F6FC !important; }
+        .hero p, .landing-hero p { color: #8B949E !important; }
+
+        /* Footer */
+        .stCaption { color: #8B949E !important; }
+
+        /* Links */
+        a { color: #58A6FF !important; }
+        a:hover { color: #79C0FF !important; }
+
+        /* Remove white backgrounds from containers */
+        [data-testid="stVerticalBlock"] > div {
+            background-color: transparent !important;
+        }
         </style>
         """, unsafe_allow_html=True)
 
