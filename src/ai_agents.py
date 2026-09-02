@@ -226,7 +226,10 @@ def _ask_json(prompt, system, temperature=0.0, client=None):
     client = client or AIClient()
     if client.mode == "offline":
         return None
-    return _extract_json(client.complete(prompt, system, temperature))
+    try:
+        return _extract_json(client.complete(prompt, system, temperature))
+    except Exception:
+        return None
 
 
 def _to_floats(obj):
@@ -326,12 +329,24 @@ def validate_and_explain_report(regex_parsed, outcome, values, ocr_text=None, cl
     data = _ask_json(prompt, system, 0.2, client)
     if not data:
         return {}, [], "", []
-    vals = _to_floats(data.get("values"))
-    corr = data.get("corrections")
-    corrections = corr if isinstance(corr, list) else []
-    explanation = str(data.get("explanation") or "")
-    steps = data.get("next_steps")
-    next_steps = [str(t) for t in steps] if isinstance(steps, list) else []
+    try:
+        vals = _to_floats(data.get("values"))
+    except Exception:
+        vals = {}
+    try:
+        corr = data.get("corrections")
+        corrections = corr if isinstance(corr, list) else []
+    except Exception:
+        corrections = []
+    try:
+        explanation = str(data.get("explanation") or "")
+    except Exception:
+        explanation = ""
+    try:
+        steps = data.get("next_steps")
+        next_steps = [str(t) for t in steps] if isinstance(steps, list) else []
+    except Exception:
+        next_steps = []
     return vals, corrections, explanation, next_steps
 
 

@@ -169,24 +169,32 @@ def _ocr_image_bytes(image_bytes):
     return "\n".join(out)
 
 def extract_text_from_pdf(uploaded_file):
-    content = uploaded_file.read()
-    reader = PdfReader(io.BytesIO(content))
-    text = "\n".join(page.extract_text() or "" for page in reader.pages)
-    if len(text.strip()) < 20 and OCR_AVAILABLE:
-        # Scanned PDF: render pages to images and OCR them
-        import pypdfium2 as pdfium
-        pdf = pdfium.PdfDocument(content)
-        pages_text = []
-        for page in pdf:
-            bitmap = page.render(scale=2.5).to_pil()
-            buf = io.BytesIO()
-            bitmap.save(buf, format="PNG")
-            pages_text.append(_ocr_image_bytes(buf.getvalue()))
-        text = "\n".join(pages_text)
-    return text
+    try:
+        content = uploaded_file.read()
+        reader = PdfReader(io.BytesIO(content))
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        if len(text.strip()) < 20 and OCR_AVAILABLE:
+            import pypdfium2 as pdfium
+            pdf = pdfium.PdfDocument(content)
+            pages_text = []
+            for page in pdf:
+                try:
+                    bitmap = page.render(scale=2.5).to_pil()
+                    buf = io.BytesIO()
+                    bitmap.save(buf, format="PNG")
+                    pages_text.append(_ocr_image_bytes(buf.getvalue()))
+                except Exception:
+                    continue
+            text = "\n".join(pages_text)
+        return text
+    except Exception:
+        return ""
 
 def extract_text_from_image(uploaded_file):
-    return _ocr_image_bytes(uploaded_file.read())
+    try:
+        return _ocr_image_bytes(uploaded_file.read())
+    except Exception:
+        return ""
 
 def _first_number(pattern, text):
     m = re.search(pattern, text, re.IGNORECASE)

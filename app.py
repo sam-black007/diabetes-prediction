@@ -1231,13 +1231,20 @@ def main():
         if report is not None or pasted.strip():
             is_image = bool(report) and report.name.lower().endswith((".png", ".jpg", ".jpeg"))
             if is_image:
-                st.image(report, caption="Uploaded report photo", width=400)
+                try:
+                    st.image(report, caption="Uploaded report photo", width=400)
+                except Exception:
+                    pass
             sig = (report.name, getattr(report, "size", None)) if report is not None else ("pasted", hash(pasted.strip()))
             if st.session_state.get("_rep_sig") != sig:
                 with st.spinner("Step 1/3 — Reading report with OCR..."):
                     text = ""
-                    if report is not None:
-                        text = extract_text_from_image(report) if is_image else extract_text_from_pdf(report)
+                    try:
+                        if report is not None:
+                            text = extract_text_from_image(report) if is_image else extract_text_from_pdf(report)
+                    except Exception as e:
+                        st.warning(f"Could not read the report file: {e}. Try pasting the text instead.")
+                        text = ""
                     if pasted.strip():
                         text = (text + "\n" + pasted.strip()).strip() if text else pasted.strip()
                     parsed = parse_report(text)
@@ -2261,8 +2268,12 @@ def main():
                 type=["png", "jpg", "jpeg"],
             )
             if report_img:
-                with st.spinner("Reading photo with OCR..."):
-                    ocr_text = extract_text_from_image(report_img)
+                try:
+                    with st.spinner("Reading photo with OCR..."):
+                        ocr_text = extract_text_from_image(report_img)
+                except Exception as e:
+                    st.warning(f"Could not read that photo: {e}. Try a clear, well-lit image or a scan.")
+                    ocr_text = ""
                 if ocr_text.strip():
                     st.session_state.ai_report_text = ocr_text
                     with st.expander("OCR text read from your photo"):
