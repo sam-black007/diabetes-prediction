@@ -29,21 +29,31 @@ except Exception:
 try:
     import easyocr
     EASYOCR_AVAILABLE = True
+    _easy_reader = None
+    def _get_easy_reader():
+        global _easy_reader
+        if _easy_reader is None:
+            try:
+                _easy_reader = easyocr.Reader(["en"], gpu=False)
+            except Exception:
+                _easy_reader = None
+                return None
+        return _easy_reader
+    def _easy_available():
+        return _easy_reader is not None
 except Exception:
     EASYOCR_AVAILABLE = False
+    _easy_reader = None
+    def _get_easy_reader():
+        return None
+    def _easy_available():
+        return False
 
-_easy_reader = None
-def _get_easy_reader():
-    global _easy_reader
-    if _easy_reader is None:
-        _easy_reader = easyocr.Reader(["en"], gpu=False)
-    return _easy_reader
-
-OCR_READY = EASYOCR_AVAILABLE or OCR_AVAILABLE or TESS_AVAILABLE
+OCR_READY = (EASYOCR_AVAILABLE and _easy_available()) or OCR_AVAILABLE or TESS_AVAILABLE
 # Prefer the strongest engine available: EasyOCR > RapidOCR > Tesseract.
-OCR_ENGINE = ("easyocr" if EASYOCR_AVAILABLE else
-              "rapidocr" if OCR_AVAILABLE else
-              "tesseract" if TESS_AVAILABLE else "none")
+OCR_ENGINE = ("easyocr" if _easy_available() else
+               "rapidocr" if OCR_AVAILABLE else
+               "tesseract" if TESS_AVAILABLE else "none")
 
 
 def _to_png(im):
@@ -103,13 +113,25 @@ def _ocr_image_bytes(image_bytes):
     texts = []
     candidates = [image_bytes]
     candidates.extend(_preprocess_variants(image_bytes))
+
+    # Convert byte candidates to numpy arrays (EasyOCR needs arrays, not bytes)
+    img_arrays = []
+    for cand in candidates:
+        try:
+            from PIL import Image
+            im = Image.open(io.BytesIO(cand)).convert("RGB")
+            import numpy as np
+            img_arrays.append(np.array(im))
+        except Exception:
+            img_arrays.append(cand)
+
     # 1) EasyOCR (strongest) — run over every enhanced variant.
-    if EASYOCR_AVAILABLE:
+    if _easy_available():
         try:
             reader = _get_easy_reader()
-            for cand in candidates:
+            for arr in img_arrays:
                 try:
-                    results = reader.readtext(cand)
+                    results = reader.readtext(arr)
                 except Exception:
                     results = []
                 if results:
