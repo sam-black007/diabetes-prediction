@@ -12,6 +12,9 @@ import streamlit as st
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
+# Keep-alive for Streamlit Cloud (prevents sleeping)
+st.set_page_config(page_title="Diabetes Risk Intelligence", page_icon="🩺", layout="wide")
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 from report_parser import extract_text_from_pdf, extract_text_from_image, parse_report, OCR_ENGINE
 from clinical_rules import (
@@ -276,19 +279,27 @@ RANGES = {
 
 @st.cache_resource
 def load_ai():
-    return AIClient()
+    try:
+        return AIClient()
+    except Exception as e:
+        st.warning(f"AI module loading: {e}")
+        return _OfflineAIClient()
 
 @st.cache_resource
 def load_artifacts():
-    model = joblib.load(MODEL_PATH)
-    scaler = joblib.load(SCALER_PATH)
-    clean = pd.read_csv(CLEAN_PATH)
-    medians = {c: clean[clean[c] != 0][c].median() for c in FEATURES}
-    threshold = 0.5
-    if os.path.exists(THRESHOLD_PATH):
-        with open(THRESHOLD_PATH) as f:
-            threshold = json.load(f).get("threshold", 0.5)
-    return model, scaler, medians, threshold
+    try:
+        model = joblib.load(MODEL_PATH)
+        scaler = joblib.load(SCALER_PATH)
+        clean = pd.read_csv(CLEAN_PATH)
+        medians = {c: clean[clean[c] != 0][c].median() for c in FEATURES}
+        threshold = 0.5
+        if os.path.exists(THRESHOLD_PATH):
+            with open(THRESHOLD_PATH) as f:
+                threshold = json.load(f).get("threshold", 0.5)
+        return model, scaler, medians, threshold
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        return None, None, None, 0.5
 
 def determine_verdict(fasting, postmeal, hba1c):
     """Rule-based WHO/ADA conclusion via the centralized clinical engine.
@@ -930,7 +941,6 @@ def run_lifestyle_assessment(life, symptoms, model, scaler, medians, threshold):
 
 
 def main():
-    st.set_page_config(page_title="Diabetes Risk Intelligence", page_icon="🩺", layout="wide")
     st.markdown(PROFESSIONAL_CSS, unsafe_allow_html=True)
 
     # Dark mode toggle
@@ -2326,4 +2336,8 @@ def main():
     st.markdown("🔗 [View source on GitHub](https://github.com/sam-black007/diabetes-prediction)")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        st.error(f"App error: {e}")
+        st.info("Please refresh the page or try again later.")
