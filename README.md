@@ -1,5 +1,9 @@
 # Diabetes Risk Intelligence
 
+![GitHub repo size](https://img.shields.io/github/repo-size/sam-black007/diabetes-prediction?style=for-the-badge)
+![GitHub stars](https://img.shields.io/github/stars/sam-black007/diabetes-prediction?style=for-the-badge)
+![GitHub license](https://img.shields.io/github/license/sam-black007/diabetes-prediction?style=for-the-badge)
+
 A clinical-grade diabetes risk screening platform that combines **ADA 2026 / AHA-ACC 2025 clinical rules** with a **calibrated soft-voting machine learning ensemble** (Logistic Regression, SVM, Random Forest, Gradient Boosting, XGBoost) trained on the PIMA dataset.
 
 Built as a **Next.js 14 + FastAPI monorepo**, deployed as a split architecture: Next.js frontend on Vercel, ML API in a container on Render. Hospital and lab systems can integrate results through **FHIR R4 / CDA** exports and a **scoped third-party API**.
@@ -8,133 +12,135 @@ Built as a **Next.js 14 + FastAPI monorepo**, deployed as a split architecture: 
 
 ---
 
-## Live Demo
-
-| Component | URL |
-|-----------|-----|
-| **Frontend** | https://diabetes-prediction-ka8j5q753-thavina-s-projects.vercel.app/ |
-| **ML API** | https://diabetes-prediction-api-lemv.onrender.com/health |
-
----
-
-## Table of Contents
-
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [ML Model](#ml-model--performance)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [Deployment](#deployment)
-- [Configuration](#configuration)
-- [API Reference](#api-reference)
-- [Testing](#testing)
-- [Contributing](#contributing)
-- [Contributors](#contributors)
-- [License](#license)
-- [Medical Disclaimer](#medical-disclaimer)
-
----
-
 ## Architecture
 
-The system uses a split-host deployment to fit within free-tier resource limits while maintaining a same-origin client experience:
+### System Architecture
 
 ```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    VERCEL — Frontend (Free Tier)                       │
-│                                                                         │
-│  Next.js 14 · React 18 · TypeScript · Tailwind · shadcn/ui              │
-│  Root Directory: /app                                                   │
-│                                                                         │
-│  Browser only ever talks to Next.js.                                    │
-│  next.config.js rewrites /api/v1/* → internal API proxy.                │
-│                                                                         │
-└──────────────────────────┬──────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                      CLIENT — NEXT.JS (Vercel)                      │
+│                                                                       │
+│  ┌───────────────────────┐  HTTPS (same-origin)  ┌─────────────────┐ │
+│  │  Next.js 14 + React   │  ──────────────────→  │  /api/v1/*      │ │
+│  │  Tailwind + shadcn/ui │                       │  Proxied to      │ │
+│  └───────────────────────┘                       │  Render API     │ │
+│                                                 └─────────────────┘ │
+│                                                                       │
+│  State: TanStack Query, React Context, localStorage                   │
+└─────────────────────────────────────────────────────────────────────┘
                            │
-                    (Same-origin rewrite)
                            ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     RENDER — API (Free Tier, 512 MB)                   │
-│                                                                         │
-│  FastAPI · Python 3.11 · uvicorn                                       │
-│  scikit-learn · XGBoost (native pred_contribs)                         │
-│  Platt sigmoid calibration · reportlab                                 │
-│                                                                         │
-│  ┌──────────────────┐    ┌──────────────────┐                          │
-│  │  Neon Postgres   │    │  Clerk (Auth)    │                          │
-│  │  (optional)      │    │  (optional)      │                          │
-│  └──────────────────┘    └──────────────────┘                          │
-│                                                                         │
-│  ┌──────────────────┐                                                   │
-│  │  Upstash Redis   │                                                   │
-│  │  (rate limit)    │                                                   │
-│  └──────────────────┘                                                   │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-**Why split?** Render's free tier provides 512 MB RAM — sufficient for the Python ML stack (~266 MB) but not for Next.js + Python together. Vercel's serverless functions cap Python bundles at 500 MB, which the scikit-learn + XGBoost stack (~1 GB unpacked) exceeds. Running both services separately avoids both constraints.
+┌─────────────────────────────────────────────────────────────────────┐
+│                    SERVER — RENDER (Free Tier, 512 MB)               │
+│                                                                       │
+│  ┌───────────────────────┐  uvicorn  ┌───────────────────────┐ │
+│  │  FastAPI + Python 3.11│  ────────→  │  ML Ensemble Service  │ │
+│  │  scikit-learn + XGBoost│           │  (5 models)           │ │
+│  │  Platt sigmoid cali.  │           └───────────────────────┘ │ │
+│  │  reportlab (PDF)      │                        │              │ │
+│  └───────────────────────┘                        ▼              │ │
+│                                                 ┌────────────────┐ │ │
+│                                                 │  Neon Postgres │ │ │
+│                                                 │  (optional)    │ │ │
+│                                                 └────────────────┘ │ │
+│                                                                       │
+│  ┌───────────────────────┐                        ┌───────────────┐│ │
+│  │  Upstash Redis        │                        │  Clerk Auth   ││ │
+│  │  (rate limiting)      │                        │  (optional)   ││ │
+│  └───────────────────────┘                        └───────────────┘│ │
+│                                                                       │
+│  Architecture Rationale:                                                     │
+│  • Render free tier: 512 MB RAM — fits Python ML stack (~266 MB)          │
+│  • Vercel serverless: caps bundles at ~500 MB — scikit-learn + XGBoost ~1 GB │
+│  • Split deployment avoids bundling both runtimes in one environment       │
+└─────────────────────────────────────────────────────────────────────┘
 
 ## ML Pipeline
 
+### End-to-End Model Training Pipeline
+
 ```text
 ┌────────────────────────────────────────────────────┐
-│          PIMA Diabetes Dataset (768 records)     │
-└────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────┐
-│          Preprocessing & Scaling                   │
-└────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────┐
-│    5 Models:                                         │
-│    - Logistic Regression                           │
-│    - SVM                                           │
-│    - Random Forest                                 │
-│    - Gradient Boosting                             │
-│    - XGBoost                                       │
-└────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────┐
-│          Soft Voting Ensemble (weights: uniform) │
-└────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────┐
-│          Platt Sigmoid Calibration                 │
-└────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────┐
-│         Split-Conformal 90% Prediction Intervals   │
-└────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────┐
-│            Tree-SHAP Explanations (XGBoost native) │
-└────────────────────────────────────────────────────┘
+│              STEP 1: Data Ingestion                │
+│  ┌────────────────────────────────────────────┐ │
+│  │  PIMA Indians Diabetes Dataset (768 records)│ │
+│  └────────────────────────────────────────────┘ │
+│              │                                         │
+│              ▼                                         │
+│  ┌────────────────────────────────────────────┐ │
+│  │  Step 2: Preprocessing & Feature Scaling     │ │
+│  └────────────────────────────────────────────┘ │
+│              │                                         │
+│              ▼                                         │
+│  ┌────────────────────────────────────────────┐ │
+│  │  Step 3: Train 5 Base Models                 │ │
+│  │  │  • Logistic Regression                    │ │
+│  │  │  • SVM (RBF kernel)                       │ │
+│  │  │  • Random Forest (n=100)                  │ │
+│  │  │  • Gradient Boosting (n=100)              │ │
+│  │  │  • XGBoost (native)                       │ │
+│  └────────────────────────────────────────────┘ │
+│              │                                         │
+│              ▼                                         │
+│  ┌────────────────────────────────────────────┐ │
+│  │  Step 4: Soft Voting Ensemble (uniform weights)│ │
+│  └────────────────────────────────────────────┘ │
+│              │                                         │
+│              ▼                                         │
+│  ┌────────────────────────────────────────────┐ │
+│  │  Step 5: Platt Sigmoid Calibration           │ │
+│  │  └── calibrator.joblib                        │ │
+│  └────────────────────────────────────────────┘ │
+│              │                                         │
+│              ▼                                         │
+│  ┌────────────────────────────────────────────┐ │
+│  │  Step 6: Split-Conformal 90% Intervals       │ │
+│  │  └── q ≈ 0.696                               │ │
+│  └────────────────────────────────────────────┘ │
+│              │                                         │
+│              ▼                                         │
+│  ┌────────────────────────────────────────────┐ │
+│  │  Step 7: Tree-SHAP Explanations (XGBoost native)│ │
+│  │  └── pred_contribs (no external shap dep.)    │ │
+│  └────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### Performance Metrics
+
+| Model | F1 | AUC | Notes |
+|-------|----|-----|-------|
+| Gradient Boosting (baseline) | 0.592 | 0.823 | Fallback scorer |
+| Soft-voting ensemble | 0.681 | 0.825 | Decision threshold 0.26 |
+| **+ Platt calibration** (deployed) | **0.727** | **0.825** | Calibrated probability |
+| Conformal interval (90%) | — | — | `q ≈ 0.696`, coverage 0.883 |
+
+### Model Evaluation
+
+<img src="plots/5_model_comparison.png" alt="Model Comparison" width="700" style="border-radius:8px;margin:12px 0"/>
+<img src="plots/7_feature_importance.png" alt="Feature Importance" width="700" style="border-radius:8px;margin:12px 0"/>
+<img src="plots/6_roc_curves.png" alt="ROC Curves" width="700" style="border-radius:8px;margin:12px 0"/>
+<img src="plots/4_boxplots_by_outcome.png" alt="Boxplots by Outcome" width="700" style="border-radius:8px;margin:12px 0"/>
+<img src="plots/5_glucose_vs_bmi.png" alt="Glucose vs BMI" width="700" style="border-radius:8px;margin:12px 0"/>
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | Next.js 14, React 18, TypeScript, Tailwind CSS, shadcn/ui |
-| **State** | TanStack Query (server), Zustand (client) |
-| **Forms** | React Hook Form + Zod |
-| **Backend** | FastAPI, Pydantic v2, uvicorn |
-| **Database** | Neon Postgres (serverless, optional) |
-| **Auth** | Clerk (optional) |
-| **Rate Limiting** | Upstash Redis (optional) |
-| **ML** | scikit-learn, XGBoost (native tree-SHAP) |
-| **PDF** | reportlab (server), @react-pdf/renderer (client) |
-| **PWA** | next-pwa (Workbox), idb |
-| **Deploy** | Vercel (frontend) + Render (API) |
-| **CI/CD** | GitHub Actions |
+| Layer | Technology | Notes |
+|-------|------------|-------|
+| **Frontend** | Next.js 14, React 18, TypeScript, Tailwind CSS, shadcn/ui | App Router, PWA-ready |
+| **State** | TanStack Query (server), Zustand (client) | Server-state + client-cache |
+| **Forms** | React Hook Form + Zod | Validation + error handling |
+| **Backend** | FastAPI, Pydantic v2, uvicorn | OpenAPI docs auto-generated |
+| **Database** | Neon Postgres (serverless, optional) | Scale-to-zero, pay-per-use |
+| **Auth** | Clerk (optional) | JWT-based, social login |
+| **Rate Limiting** | Upstash Redis (optional) | Token bucket algorithm |
+| **ML** | scikit-learn, XGBoost (native `pred_contribs`) | Tree-SHAP without `shap` dep.; calibrated ensembe |
+| **PDF** | reportlab (server), @react-pdf/renderer (client) | Clinical report generation |
+| **PWA** | next-pwa (Workbox), idb | Offline support, push notifications |
+| **Deploy** | Vercel (frontend) + Render (API) | Split architecture, free tiers |
+| **CI/CD** | GitHub Actions | Lint, test, deploy pipelines |
 
 ---
 
@@ -283,29 +289,37 @@ npm run typecheck
 
 ## Deployment
 
-### Option 1: Split Deployment (Recommended)
+### Deployment Architecture
 
-**Frontend:** Vercel (free, no card)  
-**API:** Render free tier (512 MB, no card)
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                    SPLIT DEPLOYMENT (Recommended)                  │
+│                                                                     │
+│  ┌─────────────────────┐                    ┌─────────────────────┐ │
+│  │  Vercel (Frontend)  │                    │  Render (API)       │ │
+│  │  • Free Hobby tier  │                    │  • Free 512 MB tier │ │
+│  │  • Next.js 14       │                    │  • FastAPI + Python │ │
+│  │  • Serverless Fn    │                    │  • uvicorn          │ │
+│  │  • Global CDN       │                    │  • 512 MB RAM limit │ │
+│  └─────────────────────┘                    └─────────────────────┘ │
+│                                                                     │
+│  ──► same-origin proxy: /api/v1/* → Render API                      │
+│                                                                     │
+│  ┌─────────────────────┐                    ┌─────────────────────┐ │
+│  │   CI/CD             │                    │   CI/CD             │ │
+│  │  • GitHub Actions  │                    │  • GitHub Actions   │ │
+│  │  • Vercel deploys  │                    │  • Render deploys   │ │
+│  └─────────────────────┘                    └─────────────────────┘ │
+│                                                                     │
+│  **Cost:** $0 (both free tiers)                                    │
+│  **Why split?** Render 512 MB fits Python ML (~266 MB);              │
+│  Vercel caps bundles at ~500 MB; scikit-learn + XGBoost ~1 GB unpacked.│
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
 
-**Step 1 — Deploy API on Render:**
-1. Go to [render.com](https://render.com) → Sign up with GitHub
-2. **New +** → **Blueprint** → select `sam-black007/diabetes-prediction` → **Apply**
-3. Wait ~5–10 min, copy the API URL
+### Option 2: Single Container (Self-Hosted)
 
-**Step 2 — Deploy Frontend on Vercel:**
-1. Go to [vercel.com](https://vercel.com) → Sign up with GitHub
-2. **Add New → Project** → Import `sam-black007/diabetes-prediction`
-3. **Root Directory → Edit → `app`**
-4. **Settings → Environment Variables → Production:**
-   - `API_INTERNAL_URL` = `https://<your-render-api>.onrender.com`
-5. **Deploy**
-
-**Live demo:** https://diabetes-prediction-ka8j5q753-thavina-s-projects.vercel.app/
-
-### Option 2: Single Container
-
-For hosts with 2 GB RAM (e.g., Oracle Cloud Always-Free ARM):
+For hosts with 2 GB+ RAM (e.g., Oracle Cloud Always-Free ARM):
 
 ```bash
 docker build -t diabetes-prediction .
@@ -313,6 +327,7 @@ docker run -p 3000:3000 \
   --env ENVIRONMENT=development \
   --env DEV_AUTH_BYPASS=true \
   diabetes-prediction
+# → http://localhost:3000
 ```
 
 ---
@@ -394,17 +409,55 @@ curl -H "Authorization: Bearer <api_key>" \
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit changes: `git commit -m "feat: your description"`
-4. Push: `git push origin feature/your-feature`
-5. Open a Pull Request
+### Contribution Workflow
 
-Ensure tests pass and follow existing code style conventions.
+```text
+┌─────────────────────────┐                    ┌───────────────────────┐
+│ 1. Fork repository      │                    │ 2. Clone locally      │
+│    on GitHub            │                    │    `git clone ...`    │
+│  └───────────────────────┘                    └───────────────────────┘
+│                                                  │
+│                                                  ▼
+│                                            ┌───────────────────────┐
+│                                            │ 3. Create branch      │
+│                                            │    `git checkout -b  │
+│                                            │    feature/your-feat`│
+│                                            └───────────────────────┘
+│                                                  │
+│                                                  ▼
+│                                            ┌───────────────────────┐
+│                                            │ 4. Develop & test     │
+│                                            │    - Run `pytest`     │
+│                                            │    - Run `npm lint`   │
+│                                            └───────────────────────┘
+│                                                  │
+│                                                  ▼
+│                                            ┌───────────────────────┐
+│                                            │ 5. Commit: `git commit│
+│                                            │   -m "feat:..."`     │
+│                                            └───────────────────────┘
+│                                                  │
+│                                                  ▼
+│                                            ┌───────────────────────┐
+│                                            │ 6. Push: `git push   │
+│                                            │   origin feature/...`│
+│                                            └───────────────────────┘
+│                                                  │
+│                                                  ▼
+│                                            ┌───────────────────────┐
+│                                            │ 7. Open Pull Request  │
+│                                            │    on GitHub          │
+│                                            └───────────────────────┘
+│                                                  │
+│                                                  ▼
+│                                            ┌───────────────────────┐
+│                                            │ 8. Maintainers review │
+│                                            │    & merge            │
+│                                            └───────────────────────┘
+└─────────────────────────────────────────────────────────────┘
+```
 
----
-
-## Contributors
+### Contributors
 
 <table>
   <tr>
