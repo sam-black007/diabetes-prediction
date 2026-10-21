@@ -32,7 +32,10 @@ export function ShapChart({ values }: { values: Record<string, number> }) {
           tick={{ fontSize: 12 }}
         />
         <Tooltip
-          formatter={(v: number) => [v.toFixed(4), 'SHAP value']}
+          formatter={(value: number, { name }: any) => [
+            <span key="feature">{name}</span>,
+            <span key="value">{value.toFixed(4)}</span>,
+          ]}
           contentStyle={{ borderRadius: 8, fontSize: 12 }}
         />
         <ReferenceLine x={0} stroke="hsl(var(--border))" />
