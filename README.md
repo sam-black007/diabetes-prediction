@@ -74,6 +74,49 @@ The system uses a split-host deployment to fit within free-tier resource limits 
 
 **Why split?** Render's free tier provides 512 MB RAM — sufficient for the Python ML stack (~266 MB) but not for Next.js + Python together. Vercel's serverless functions cap Python bundles at 500 MB, which the scikit-learn + XGBoost stack (~1 GB unpacked) exceeds. Running both services separately avoids both constraints.
 
+## ML Pipeline
+
+```text
+┌────────────────────────────────────────────────────┐
+│          PIMA Diabetes Dataset (768 records)     │
+└────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────┐
+│          Preprocessing & Scaling                   │
+└────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────┐
+│    5 Models:                                         │
+│    - Logistic Regression                           │
+│    - SVM                                           │
+│    - Random Forest                                 │
+│    - Gradient Boosting                             │
+│    - XGBoost                                       │
+└────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────┐
+│          Soft Voting Ensemble (weights: uniform) │
+└────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────┐
+│          Platt Sigmoid Calibration                 │
+└────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────┐
+│         Split-Conformal 90% Prediction Intervals   │
+└────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────┐
+│            Tree-SHAP Explanations (XGBoost native) │
+└────────────────────────────────────────────────────┘
+```
+
 ---
 
 ## Tech Stack
@@ -118,6 +161,8 @@ The system uses a split-host deployment to fit within free-tier resource limits 
 <img src="plots/5_model_comparison.png" alt="Model Comparison" width="700" style="border-radius:8px;margin:12px 0"/>
 <img src="plots/7_feature_importance.png" alt="Feature Importance" width="700" style="border-radius:8px;margin:12px 0"/>
 <img src="plots/6_roc_curves.png" alt="ROC Curves" width="700" style="border-radius:8px;margin:12px 0"/>
+<img src="plots/4_boxplots_by_outcome.png" alt="Boxplots by Outcome" width="700" style="border-radius:8px;margin:12px 0"/>
+<img src="plots/5_glucose_vs_bmi.png" alt="Glucose vs BMI" width="700" style="border-radius:8px;margin:12px 0"/>
 
 ---
 
