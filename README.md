@@ -1,84 +1,123 @@
 # Diabetes Risk Intelligence
 
-<img src="assets/hero.svg" alt="Diabetes Risk Intelligence" width="100%" max-width="800"/>
+A clinical-grade diabetes risk screening platform that combines **ADA 2026 / AHA-ACC 2025 clinical rules** with a **calibrated soft-voting machine learning ensemble** (Logistic Regression, SVM, Random Forest, Gradient Boosting, XGBoost) trained on the PIMA dataset.
 
-> **Live (new):** [diabetes-prediction-ka8j5q753-thavina-s-projects.vercel.app](https://diabetes-prediction-ka8j5q753-thavina-s-projects.vercel.app/)
-> **Live (legacy v1):** [diabetes-prediction-v0.streamlit.app](https://diabetes-prediction-v0.streamlit.app)
-
-A diabetes risk screening platform that combines clinical rules (ADA 2026, AHA-ACC 2025) with a machine learning model (a **calibrated soft-voting ensemble** — Logistic Regression, SVM, Random Forest, Gradient Boosting and XGBoost over the PIMA dataset) to help people understand their health measurements. Built as a **Next.js + FastAPI monorepo** and deployable either as **one Docker container** or **split** (Next.js on Vercel, the ML API in a 512 MB container). Hospital and lab systems can pull results through **FHIR R4 / CDA** exports and a **scoped third-party API**.
+Built as a **Next.js 14 + FastAPI monorepo**, deployed as a split architecture: Next.js frontend on Vercel, ML API in a container on Render. Hospital and lab systems can integrate results through **FHIR R4 / CDA** exports and a **scoped third-party API**.
 
 > ⚠️ **Screening and education only — not a medical diagnosis.** Always confirm results with a clinician.
 
 ---
 
-## Architecture
+## Live Demo
 
-<img src="data/sample_report.png" alt="Sample Screening Report" width="100%" max-width="700" style="display:block;margin:20px 0"/>
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    One Docker container (one URL)               │
-│                                                                 │
-│   ┌─────────────────────────┐    ┌──────────────────────┐       │
-│   │  Next.js 14 standalone  │ /api/v1/*  FastAPI (Python)      │
-│   │  React 18 + Tailwind    │──proxy───►│  uvicorn :8000 │       │
-│   │  shadcn/ui, PWA         │    │  (internal)          │       │
-│   └──────────┬──────────────┘    └──────────┬───────────┘       │
-│              │                              │                   │
-│              │ Clerk (auth)                 │ asyncpg           │
-│              ▼                              ▼                   │
-│      ┌──────────────┐              ┌──────────────────┐         │
-│      │  Clerk       │              │  Neon Postgres   │         │
-│      │  (10k MAU)   │              │  (0.5 GB free)   │         │
-│      └──────────────┘              └──────────────────┘         │
-│                                             │                   │
-│                                    ┌────────▼────────┐          │
-│                                    │ Upstash Redis   │          │
-│                                    │ (rate limiting) │          │
-│                                    └─────────────────┘          │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-The browser only ever talks to the Next.js server. In production `API_BASE_URL` is
-same-origin, and `next.config.js` rewrites `/api/v1/:path*` to the internal
-FastAPI process, so the API is never exposed directly.
-
-**Cost:** Neon, Clerk and Upstash run on free tiers. The single-container shape needs
-**2 GB RAM**; the split shape runs the API comfortably in **512 MB**.
+| Component | URL |
+|-----------|-----|
+| **Frontend** | https://diabetes-prediction-ka8j5q753-thavina-s-projects.vercel.app/ |
+| **ML API** | https://diabetes-prediction-api-lemv.onrender.com/health |
 
 ---
 
-## Version History
+## Table of Contents
 
-### v3.0 — Next.js + FastAPI Rewrite (current)
-*Single-container monorepo*
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [ML Model](#ml-model--performance)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Deployment](#deployment)
+- [Configuration](#configuration)
+- [API Reference](#api-reference)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [Contributors](#contributors)
+- [License](#license)
+- [Medical Disclaimer](#medical-disclaimer)
 
-- **Next.js 14 frontend** — App Router, React 18, TypeScript strict, Tailwind CSS, shadcn/ui
-- **FastAPI backend** — Python 3.11 + uvicorn, same origin behind the Next.js server
-- **User accounts & history** — Clerk auth + Neon Postgres persistence
-- **Real-time device sync** — Apple HealthKit, Google Fit, CGM (Dexcom/Libre) webhooks
-- **Offline PWA** — service worker, IndexedDB queue, background sync
-- **Advanced risk modeling** — SHAP explanations, RF+XGBoost ensemble, uncertainty bands
-- **Third-party API** — scoped API keys, rate limiting, webhooks
-- **FHIR/CDA export** — standards-compliant EHR integration
-- **Model retraining** — `scripts/train_ensemble.py` reproduces all artifacts
-- **Feature flags** — gradual rollout control
+---
 
-### v2.0 — Advanced Medical Features
-*15 new clinical tools*
+## Architecture
 
-- A1C ↔ Average Glucose Converter, Risk Stratification, Follow-up Schedule
-- Emergency Protocols, Family History, Complication Risks
-- Lifestyle Recommendations, Medication Impacts, Comorbidity Assessment
-- What-If Simulator, Gestational Diabetes, Pediatric/Elderly Adjustments
-- Previous Report Comparison, Risk Factor Breakdown
+The system uses a split-host deployment to fit within free-tier resource limits while maintaining a same-origin client experience:
 
-### v1.5 — Unit Converter & Dark Mode
-### v1.4 — Health Score & Sharing
-### v1.3 — AI & Accessibility
-### v1.2 — Clinical Accuracy
-### v1.1 — UI/UX Overhaul
-### v1.0 — Core Screening Engine
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    VERCEL — Frontend (Free Tier)                       │
+│                                                                         │
+│  Next.js 14 · React 18 · TypeScript · Tailwind · shadcn/ui              │
+│  Root Directory: /app                                                   │
+│                                                                         │
+│  Browser only ever talks to Next.js.                                    │
+│  next.config.js rewrites /api/v1/* → internal API proxy.                │
+│                                                                         │
+└──────────────────────────┬──────────────────────────────────────────────┘
+                           │
+                    (Same-origin rewrite)
+                           ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     RENDER — API (Free Tier, 512 MB)                   │
+│                                                                         │
+│  FastAPI · Python 3.11 · uvicorn                                       │
+│  scikit-learn · XGBoost (native pred_contribs)                         │
+│  Platt sigmoid calibration · reportlab                                 │
+│                                                                         │
+│  ┌──────────────────┐    ┌──────────────────┐                          │
+│  │  Neon Postgres   │    │  Clerk (Auth)    │                          │
+│  │  (optional)      │    │  (optional)      │                          │
+│  └──────────────────┘    └──────────────────┘                          │
+│                                                                         │
+│  ┌──────────────────┐                                                   │
+│  │  Upstash Redis   │                                                   │
+│  │  (rate limit)    │                                                   │
+│  └──────────────────┘                                                   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Why split?** Render's free tier provides 512 MB RAM — sufficient for the Python ML stack (~266 MB) but not for Next.js + Python together. Vercel's serverless functions cap Python bundles at 500 MB, which the scikit-learn + XGBoost stack (~1 GB unpacked) exceeds. Running both services separately avoids both constraints.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| **Frontend** | Next.js 14, React 18, TypeScript, Tailwind CSS, shadcn/ui |
+| **State** | TanStack Query (server), Zustand (client) |
+| **Forms** | React Hook Form + Zod |
+| **Backend** | FastAPI, Pydantic v2, uvicorn |
+| **Database** | Neon Postgres (serverless, optional) |
+| **Auth** | Clerk (optional) |
+| **Rate Limiting** | Upstash Redis (optional) |
+| **ML** | scikit-learn, XGBoost (native tree-SHAP) |
+| **PDF** | reportlab (server), @react-pdf/renderer (client) |
+| **PWA** | next-pwa (Workbox), idb |
+| **Deploy** | Vercel (frontend) + Render (API) |
+| **CI/CD** | GitHub Actions |
+
+---
+
+## ML Model & Performance
+
+**Architecture:** Calibrated soft-voting ensemble trained on the PIMA Indians Diabetes Database (768 records, 8 features).
+
+- **Members:** Logistic Regression, SVM, Random Forest, Gradient Boosting, XGBoost
+- **Calibration:** Platt sigmoid (`calibrator.joblib`)
+- **Uncertainty:** Split-conformal 90% prediction intervals
+- **Explanations:** Tree-SHAP values via XGBoost native `pred_contribs` — no external `shap` dependency
+
+### Performance Metrics
+
+| Model | F1 | AUC | Notes |
+|-------|----|-----|-------|
+| Gradient Boosting (baseline) | 0.592 | 0.823 | Fallback scorer |
+| Soft-voting ensemble | 0.681 | 0.825 | Decision threshold 0.26 |
+| **+ Platt calibration** (deployed) | **0.727** | **0.825** | Calibrated probability |
+| Conformal interval (90%) | — | — | `q ≈ 0.696`, coverage 0.883 |
+
+### Model Evaluation
+
+<img src="plots/5_model_comparison.png" alt="Model Comparison" width="700" style="border-radius:8px;margin:12px 0"/>
+<img src="plots/7_feature_importance.png" alt="Feature Importance" width="700" style="border-radius:8px;margin:12px 0"/>
+<img src="plots/6_roc_curves.png" alt="ROC Curves" width="700" style="border-radius:8px;margin:12px 0"/>
 
 ---
 
@@ -89,387 +128,256 @@ diabetes-prediction/
 ├── app/                          # Next.js 14 frontend
 │   ├── src/
 │   │   ├── app/                  # App Router pages
-│   │   │   ├── (auth)/           # Landing + auth pages
-│   │   │   ├── (dashboard)/      # Protected app routes
-│   │   │   │   ├── screening/    # 3-step health check
-│   │   │   │   ├── history/      # Paginated history + detail
-│   │   │   │   ├── devices/      # Device connections
-│   │   │   │   ├── settings/     # Preferences + API keys
-│   │   │   │   └── api-docs/     # Third-party API reference
-│   │   │   ├── api/              # Next.js API routes (proxy)
-│   │   │   ├── layout.tsx        # Root layout
-│   │   │   └── globals.css       # Tailwind + medical palette
-│   │   ├── components/
-│   │   │   ├── ui/               # shadcn/ui primitives
-│   │   │   ├── screening/        # Screening components
-│   │   │   ├── charts/           # Recharts wrappers
-│   │   │   └── pdf/              # @react-pdf/renderer
-│   │   ├── lib/                  # api client, auth token, validation/
-│   │   ├── hooks/                # Custom React hooks
-│   │   ├── store/                # Zustand (offline, UI)
-│   │   └── types/                # OpenAPI-generated types
-│   ├── next.config.js            # next-pwa config
-│   └── tailwind.config.ts
-│
+│   │   ├── components/           # UI, screening, charts, PDF
+│   │   ├── lib/                  # API client, auth, validation
+│   │   ├── hooks/                # React hooks
+│   │   └── types/                # TypeScript types
+│   ├── next.config.js            # Vercel rewrite config
+│   └── package.json
 ├── api/
 │   └── python/                   # FastAPI backend
-│       ├── main.py               # App entry + lifespan
-│       ├── config.py             # Pydantic Settings
-│       ├── routes/
-│       │   ├── screening.py      # POST /screening
-│       │   ├── health_score.py   # POST /health-score
-│       │   ├── ml_inference.py   # POST /ml/predict
-│       │   ├── pdf_export.py     # POST /export/pdf
-│       │   ├── history.py        # GET /history
-│       │   ├── devices.py        # Device webhooks + sync
-│       │   └── third_party.py    # API keys + rate limits
+│       ├── main.py               # Entry point
+│       ├── config.py             # Pydantic settings
+│       ├── routes/               # Route handlers
+│       ├── services/             # Business logic
 │       ├── models/               # Pydantic v2 models
-│       ├── services/
-│       │   ├── clinical_rules.py # Clinical engine (pure Python)
-│       │   ├── ml_model.py       # Ensemble + calibration + SHAP
-│       │   ├── pdf_generator.py  # reportlab
-│       │   ├── device_sync.py    # HealthKit/Fit/CGM
-│       │   ├── screening_engine.py # Result assembler (build_result)
-│       │   ├── feature_flags.py  # Flags + percentage rollout
-│       │   ├── rate_limit.py     # Upstash / in-memory limiter
-│       │   └── fhir_export.py    # FHIR R4 / CDA
-│       ├── db/
-│       │   ├── connection.py     # asyncpg pool
-│       │   ├── migrations/       # Alembic
-│       │   └── repositories/
-│       ├── auth/clerk.py         # JWT verification
+│       ├── db/                   # asyncpg database layer
 │       └── requirements.txt
-│
-├── packages/
-│   └── shared-types/             # OpenAPI → TypeScript
-│
-├── .github/workflows/
-│   ├── ci.yml                    # v3 monorepo: frontend + backend pytest
-│   └── test.yml                  # legacy v1 pipeline (preprocessing → training)
-│
-├── docs/superpowers/specs/       # Design specs
-├── .Codex/plans/                 # Implementation plans
+├── scripts/
+│   └── train_ensemble.py         # Model training
+├── data/
+│   └── processed/                # Model artifacts (joblib)
+├── plots/                        # Evaluation visualizations
+├── Dockerfile                    # Single-container build
+├── api/python/Dockerfile         # API-only container build
+├── render.yaml                   # Render Blueprint
 ├── docker-compose.yml            # Local Postgres + Redis
-├── Dockerfile                    # Single-image build (Next.js + FastAPI)
-├── docker/entrypoint.sh          # Starts uvicorn + Next.js in one container
-├── deploy/oracle/                # Always-free VM bootstrap + cloud-init
-├── render.yaml                   # Render blueprint (API-only service)
-├── turbo.json                    # Turborepo task pipeline
+├── deploy/oracle/                # Oracle Always-Free VM bootstrap
+├── docs/documentation.md         # Full documentation
+├── turbo.json                    # Turborepo pipeline
 └── package.json                  # Root workspace
 ```
 
-> The repository root also still hosts the **legacy v1 Streamlit app** (`app.py`,
-> `src/`, `tests/`, root `requirements.txt`), deployed separately. The v3
-> architecture above lives in `app/` and `api/`.
-
 ---
 
-## Clinical Rules Engine
-
-Every verdict comes from a single, transparent, offline rules layer (`api/python/services/clinical_rules.py`), not from the LLM.
-
-- **Glucose** — measurement-type aware (fasting, post-meal, HbA1c, OGTT, random) with ADA 2026 thresholds
-- **Blood pressure** — independent SBP/DBP OR-logic (AHA/ACC 2025)
-- **BMI** — computed from height + weight
-- **Lipids** — LDL-C, HDL-C, triglycerides scored independently
-- **Red-flag engine** — glucose 400+, BP emergency + symptoms surfaced first
-
----
-
-## ML Model Accuracy
-
-> **Deployed model:** a **soft-voting ensemble** (Logistic Regression, SVM, Random
-> Forest, Gradient Boosting, XGBoost) trained on the PIMA Indians Diabetes
-> Database (768 records, 8 features) and shipped as
-> `data/processed/ensemble_model.joblib`. Raw scores are **Platt-calibrated**
-> (`calibrator.joblib`) and paired with **split-conformal 90% intervals**
-> (`conformal_q ≈ 0.70`). Tree-SHAP explanations come from the ensemble's XGBoost
-> member via its native `pred_contribs` (no `shap` dependency). All artifacts are
-> produced by `scripts/train_ensemble.py`. It outputs a supplementary risk score
-> only — the clinical rules engine remains the source of truth.
-
-| Model | F1 | AUC | Notes |
-|-------|----|-----|-------|
-| Gradient Boosting (baseline) | 0.592 | 0.823 | fallback scorer if the ensemble is missing |
-| **Soft-voting ensemble** | **0.681** | **0.825** | decision threshold 0.26 |
-| **+ Platt calibration (deployed)** | **0.727** | **0.825** | calibrated probability |
-| Conformal interval (90%) | — | — | `q = 0.696`, test coverage 0.883 |
-
-### Model Evaluation Plots
-
-<img src="plots/5_model_comparison.png" alt="Model Comparison" width="100%" max-width="700" style="display:block;margin:10px 0"/>
-
-<img src="plots/7_feature_importance.png" alt="Feature Importance" width="100%" max-width="700" style="display:block;margin:10px 0"/>
-
-<img src="plots/6_roc_curves.png" alt="ROC Curves" width="100%" max-width="700" style="display:block;margin:10px 0"/>
-
----
-
-## How to Run
+## Getting Started
 
 ### Prerequisites
 
 - Node.js 20+
 - Python 3.11+
-- Docker (for local Postgres + Redis)
+- Docker (optional, for local Postgres + Redis)
 
-### 1. Install dependencies
+### 1. Clone
 
 ```bash
-npm install                    # installs all workspaces
-cd api/python && pip install -r requirements.txt
+git clone https://github.com/sam-black007/diabetes-prediction.git
+cd diabetes-prediction
 ```
 
-### 2. Configure environment
+### 2. Install Dependencies
+
+```bash
+# Frontend
+cd app && npm install
+
+# Backend
+cd ../api/python && pip install -r requirements.txt
+```
+
+### 3. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Required variables:
+| Variable | Purpose | Required |
+|----------|---------|----------|
+| `API_INTERNAL_URL` | Backend URL for Vercel rewrite | Yes (split deploy) |
+| `DATABASE_URL` | Neon Postgres connection string | No |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk frontend key | No |
+| `CLERK_SECRET_KEY` | Clerk backend key | No |
+| `CLERK_ISSUER` | Clerk issuer URL | No |
+| `CLERK_WEBHOOK_SECRET` | Svix webhook secret | No |
+| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Rate limiting | No |
+| `CRON_SECRET` | Cron endpoint protection | No |
+| `MODEL_PATH` | Model artifact path | No |
 
-```bash
-# Database (Neon) — leave blank to run in stateless mode
-DATABASE_URL=postgresql://user:pass@host/db
+### 4. Run Locally
 
-# Clerk auth — leave blank locally to run without auth
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_SECRET_KEY=sk_test_...
-CLERK_ISSUER=https://your-app.clerk.accounts.dev
-CLERK_WEBHOOK_SECRET=whsec_...        # POST /api/v1/webhooks/clerk (Svix)
-
-# Upstash Redis (rate limiting) — optional, falls back to in-memory
-UPSTASH_REDIS_REST_URL=https://...
-UPSTASH_REDIS_REST_TOKEN=...
-
-# Cron protection — your scheduler sends `Authorization: Bearer <CRON_SECRET>`
-CRON_SECRET=
-
-# Local-only auth bypass (never enable in production)
-DEV_AUTH_BYPASS=false
-DEV_USER_ID=dev-user
-
-# Frontend -> API base URL (local dev only; production uses same-origin)
-NEXT_PUBLIC_API_URL=http://localhost:8000
-
-# ML model directory
-MODEL_PATH=data/processed/best_model.joblib
-```
-
-### 3. Start local services
-
-```bash
-docker-compose up -d           # Postgres + Redis
-```
-
-### 4. Run migrations
-
+**Backend:**
 ```bash
 cd api/python
-alembic upgrade head
+pip install -r requirements.txt
+python -m uvicorn main:app --reload --port 8000
 ```
 
-### 5. Start dev servers
-
+**Frontend:**
 ```bash
-# Terminal 1 — FastAPI
-cd api/python && uvicorn main:app --reload --port 8000
-
-# Terminal 2 — Next.js
-cd app && npm run dev
+cd app
+npm install
+npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) (frontend) or [http://localhost:8000/docs](http://localhost:8000/docs) (API).
+Open [http://localhost:3000](http://localhost:3000).
 
----
-
-## Deployment
-
-Two supported shapes:
-
-| Shape | Frontend | API | Cost | Use when |
-|-------|----------|-----|------|----------|
-| **Split** | Vercel (free, no card) | Render free (512 MB, no card) | **$0** | You want a public link with no credit card |
-| **Single container** | same container | same container | VM cost | You want one host / full control |
-
-### Split: Vercel (frontend) + Render (ML API)
-
-The frontend runs on Vercel's free Hobby plan and the FastAPI + ML stack runs in a
-512 MB Render container. Vercel's `next.config.js` rewrite proxies `/api/v1/*` to the
-API, so the browser stays same-origin and no CORS is needed.
-
-**Live demo:** https://diabetes-prediction-ka8j5q753-thavina-s-projects.vercel.app/  
-**API:** `https://diabetes-prediction-api-lemv.onrender.com` (deployed on Render free tier)
-
-1. **Deploy the API first.** Render → **New +** → **Blueprint** → pick this repo.
-   `render.yaml` builds `api/python/Dockerfile` as a free Docker web service.
-   Copy the resulting URL, e.g. `https://diabetes-prediction-api-lemv.onrender.com`.
-2. **Deploy the frontend.** Import the repo on Vercel and set the project's
-   **Root Directory to `app/`** (Framework preset: Next.js).
-3. Add the API URL as a Vercel environment variable and redeploy:
-
-   ```bash
-   API_INTERNAL_URL=https://<your-api>.onrender.com
-   ```
-
-   Do **not** set `NEXT_PUBLIC_API_URL` — leaving it empty keeps the client
-   same-origin so every call goes through the rewrite.
-
-Notes: the free API sleeps after 15 minutes idle (~1 minute cold start), and
-`ENVIRONMENT=development` + `DEV_AUTH_BYPASS=true` run it without Clerk or a database.
-Add a free Neon Postgres and Clerk keys to enable accounts, history and API keys.
-
-### Single container (one host)
-
-The root `Dockerfile` builds one image containing both: Next.js in standalone mode
-plus Python 3.11 running FastAPI beside it, with `docker/entrypoint.sh` starting
-both and Next.js as the only public server.
+### 5. Run Tests
 
 ```bash
-# Build and run locally (needs Docker)
-docker build -t diabetes-prediction .
-docker run -p 3000:3000 --env ENVIRONMENT=development --env DEV_AUTH_BYPASS=true diabetes-prediction
-# → http://localhost:3000
-```
-
-#### Deploy to Oracle Cloud (always free, 24 GB)
-
-Oracle's Always Free ARM shape (`VM.Standard.A1.Flex`, 4 OCPU / 24 GB) comfortably
-runs the whole stack and is free with no time limit. It is a normal always-on VM —
-your laptop is only used for setup.
-
-1. Create an instance: **Ubuntu 22.04/24.04**, shape **`VM.Standard.A1.Flex`**
-   (4 OCPU, 24 GB), add your SSH key, and paste `deploy/oracle/cloud-init.yaml`
-   into *Advanced options → Management → Cloud-init script*.
-2. In the VCN's **security list**, add an ingress rule: source `0.0.0.0/0`,
-   TCP, destination port **3000**.
-3. Wait for the build (a few minutes), then open `http://<public-ip>:3000`.
-
-To update later, SSH in and re-run the bootstrap (it re-pulls and rebuilds):
-
-```bash
-ssh ubuntu@<public-ip> 'APP_DIR=/home/ubuntu/app bash /home/ubuntu/app/deploy/oracle/bootstrap.sh'
-```
-
-Put real secrets in `/home/ubuntu/app/.env.production` — the bootstrap passes it to
-the container automatically. For HTTPS, put Caddy or nginx in front of port 3000.
-
-> **Why isn't the API on Vercel?** Vercel's Python functions cap the bundle at
-> 500 MB. The scikit-learn + XGBoost stack unpacks to roughly 1 GB, so it cannot
-> run as a serverless function — but it fits a 512 MB container on its own.
-
-**Other hosts:** any Docker host works. Railway, Fly.io, Hetzner and DigitalOcean all
-accept the root `Dockerfile` unchanged; point them at it and give the container 2 GB.
-`api/python/Dockerfile` is the API-only variant used by the split deployment.
-
-### Environment variables
-
-Set on the host (all optional for a no-database demo):
-
-| Variable | Purpose |
-|----------|---------|
-| `ENVIRONMENT` | `production` for real auth; anything else enables the dev bypass below |
-| `DEV_AUTH_BYPASS` | `true` runs without Clerk/DB (demo only; ignored when `ENVIRONMENT=production`) |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key — **inlined at build time**, pass as a Docker build arg |
-| `NEXT_PUBLIC_API_URL` | Leave empty/`""` in the container — the client is same-origin |
-| `DATABASE_URL` | Neon Postgres (enables history, devices, API keys) |
-| `CLERK_SECRET_KEY`, `CLERK_ISSUER` | Clerk JWT verification |
-| `CLERK_WEBHOOK_SECRET` | Svix signature for `POST /api/v1/webhooks/clerk` |
-| `CRON_SECRET` | Protects `GET|POST /api/v1/cron/sync-devices` |
-| `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Distributed rate limiting |
-| `CORS_ORIGINS` | JSON array, only needed if the API is called cross-origin |
-
-- **Python 3.11** is pinned in `api/python/.python-version` and the image is built on
-  Debian bookworm (Python 3.11), matching the interpreter the model artifacts were
-  pickled with.
-- Scheduling `sync-devices` is host-specific (e.g. a Render cron job hitting
-  `/api/v1/cron/sync-devices` with the `CRON_SECRET`).
-
----
-
-## API Reference
-
-Auto-generated OpenAPI docs:
-
-- **Local:** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Production:** `https://<your-app-domain>/api-docs`
-
-### Core endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/v1/screening` | Run full clinical screening |
-| `GET` | `/api/v1/screening/{id}` | Get screening result |
-| `POST` | `/api/v1/health-score` | Calculate 0-100 score |
-| `POST` | `/api/v1/ml/predict` | ML inference + SHAP |
-| `POST` | `/api/v1/ml/predict-simple` | ML inference without SHAP |
-| `POST` | `/api/v1/export/pdf` | Generate a clinical PDF (stateless) |
-| `POST` | `/api/v1/export/fhir` | FHIR R4 Bundle (stateless) |
-| `POST` | `/api/v1/export/cda` | HL7 CDA R2 document (stateless) |
-| `GET` | `/api/v1/history` | List user screenings |
-| `GET` | `/api/v1/history/{id}/export?format=pdf\|fhir\|cda` | Export a stored screening |
-| `GET` | `/api/v1/devices` | List connected devices |
-| `GET` | `/api/v1/features` | Effective feature flags |
-| `POST` | `/api/v1/third-party/api-keys` | Create API key |
-| `POST` | `/api/v1/third-party/screening` | Screening via API key (scope `screening:write`) |
-| `GET` | `/api/v1/third-party/history` | History via API key (scope `history:read`) |
-| `GET/POST` | `/api/v1/cron/sync-devices` | Background device sync (cron) |
-| `POST` | `/api/v1/webhooks/clerk` | Clerk user sync (Svix-verified) |
-
-### Third-party authentication
-
-```bash
-curl -H "Authorization: Bearer drk_live_..." \
-  https://<your-app-domain>/api/v1/third-party/history
-```
-
----
-
-## Testing
-
-```bash
-# Backend — pytest + coverage (49 tests)
+# Backend
 cd api/python
-pip install -r requirements-dev.txt
 pytest --cov=services --cov=routes
 
-# Frontend — quality gates
+# Frontend
 cd app
 npm run lint
 npm run typecheck
 ```
 
-CI (`.github/workflows/ci.yml`) runs both on every push and PR to `main`.
-Frontend unit (`vitest`) and E2E (`playwright`) suites are wired in
-`app/package.json` but do not yet have test files, so they are not in CI.
+---
+
+## Deployment
+
+### Option 1: Split Deployment (Recommended)
+
+**Frontend:** Vercel (free, no card)  
+**API:** Render free tier (512 MB, no card)
+
+**Step 1 — Deploy API on Render:**
+1. Go to [render.com](https://render.com) → Sign up with GitHub
+2. **New +** → **Blueprint** → select `sam-black007/diabetes-prediction` → **Apply**
+3. Wait ~5–10 min, copy the API URL
+
+**Step 2 — Deploy Frontend on Vercel:**
+1. Go to [vercel.com](https://vercel.com) → Sign up with GitHub
+2. **Add New → Project** → Import `sam-black007/diabetes-prediction`
+3. **Root Directory → Edit → `app`**
+4. **Settings → Environment Variables → Production:**
+   - `API_INTERNAL_URL` = `https://<your-render-api>.onrender.com`
+5. **Deploy**
+
+**Live demo:** https://diabetes-prediction-ka8j5q753-thavina-s-projects.vercel.app/
+
+### Option 2: Single Container
+
+For hosts with 2 GB RAM (e.g., Oracle Cloud Always-Free ARM):
+
+```bash
+docker build -t diabetes-prediction .
+docker run -p 3000:3000 \
+  --env ENVIRONMENT=development \
+  --env DEV_AUTH_BYPASS=true \
+  diabetes-prediction
+```
 
 ---
 
-## Tech Stack
+## API Reference
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS, shadcn/ui |
-| State | TanStack Query (server), Zustand (client) |
-| Forms | React Hook Form + Zod |
-| Backend | FastAPI, Pydantic v2, asyncpg |
-| Database | Neon Postgres (serverless) |
-| Auth | Clerk |
-| Rate limiting | Upstash Redis |
-| ML | scikit-learn, XGBoost (native tree-SHAP) |
-| PDF | reportlab (server), @react-pdf/renderer (client) |
-| PWA | next-pwa (Workbox), idb |
-| Deploy | Docker (single container; Render blueprint included) |
-| CI/CD | GitHub Actions (`.github/workflows/ci.yml`) |
+All endpoints are available under `/api/v1/`.
+
+### Screening
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/screening` | Full clinical screening |
+| `GET` | `/api/v1/screening/{id}` | Get screening result |
+
+**Request:**
+```json
+{
+  "age": 54,
+  "sex": "M",
+  "glucose_mg_dl": 148,
+  "sbp": 138,
+  "dbp": 86,
+  "height_cm": 175,
+  "weight_kg": 88,
+  "ldl_mg_dl": 142,
+  "hdl_mg_dl": 38,
+  "triglycerides_mg_dl": 190,
+  "family_history": true
+}
+```
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "health_score": 42,
+  "risk_category": "very_high",
+  "ml_result": {
+    "score": 0.473,
+    "shap_values": {
+      "Pregnancies": 0.080,
+      "Glucose": 0.372,
+      "BloodPressure": -0.064,
+      "SkinThickness": -0.065,
+      "Insulin": -0.549,
+      "BMI": -0.271,
+      "DiabetesPedigreeFunction": 0.048,
+      "Age": 0.587
+    },
+    "shap_base_value": 0.083
+  }
+}
+```
+
+### Health
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/v1/health` | Service health check |
+
+Response: `{"status":"healthy","version":"2.0.0"}`
+
+### Third-Party API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/third-party/api-keys` | Create API key |
+| `POST` | `/api/v1/third-party/screening` | Screening via API key |
+| `GET` | `/api/v1/third-party/history` | History via API key |
+
+```bash
+curl -H "Authorization: Bearer <api_key>" \
+  https://<api-url>/api/v1/third-party/screening \
+  -d '{"age":54,"sex":"M",...}'
+```
 
 ---
 
-## Safety
+## Contributing
 
-This tool provides **screening and education only — not a medical diagnosis**. Always confirm results with a clinician via fasting glucose / HbA1c test per WHO and IDF guidance.
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Commit changes: `git commit -m "feat: your description"`
+4. Push: `git push origin feature/your-feature`
+5. Open a Pull Request
+
+Ensure tests pass and follow existing code style conventions.
+
+---
+
+## Contributors
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/sam-black007"><img src="https://github.com/sam-black007.png" width="80px" alt="sam-black007"/><br /><sub><b>sam-black007</b></sub><br /><sub>SAM JOSEPH . B</sub></a></td>
+    <td align="center"><a href="https://github.com/Thavina22"><img src="https://github.com/Thavina22.png" width="80px" alt="Thavina22"/><br /><sub><b>Thavina22</b></sub><br /><sub>Thavina A</sub></a></td>
+  </tr>
+</table>
 
 ---
 
 ## License
 
 MIT License — free to use, modify, and share.
+
+---
+
+## Medical Disclaimer
+
+This tool provides **screening and education only — not a medical diagnosis**. Always confirm results with a clinician via fasting glucose / HbA1c testing per WHO and IDF guidance. Do not use this tool to make clinical decisions without professional medical supervision.
+
+---
