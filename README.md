@@ -106,6 +106,72 @@ Built as a **Next.js 14 + FastAPI monorepo**, deployed as a split architecture: 
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Project Workflow
+
+```mermaid
+flowchart TD
+    %% Styles
+    classDef client fill:#e3f2fd,stroke:#1976d2,stroke-width:2px;
+    classDef server fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    classDef ml fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+    classDef api fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
+    classDef storage fill:#fafafa,stroke:#607d8b,stroke-width:1px,stroke-dasharray: 5 5;
+
+    %% Client
+    subgraph CLIENT["Client \nNext.js (Vercel)"]
+        direction TB
+        UI[UI: Screening Form]
+        Query[TanStack Query]
+        Storage[localStorage]
+    end
+
+    %% Server
+    subgraph SERVER["Server \nRender (512 MB)"]
+        direction TB
+        FastAPI[FastAPI + uvicorn]
+        Models[ML Ensemble \n5 models]
+        Calibrator[Platt Calibrator]
+        Conformal[Split-Conformal\n90% intervals]
+        SHAP[Tree-SHAP\nXGBoost native]
+        Postgres[Neon Postgres\n(optional)]
+        Redis[Upstash Redis\n(rate limiting)]
+        Clerk[Clerk Auth\n(optional)]
+    end
+
+    %% API
+    subgraph API["API Layer\n/api/v1/*"]
+        direction TB
+        Proxy[Next.js Rewrites]
+        Endpoints[API Endpoints]
+    end
+
+    %% Connections
+    UI -->|Input data| Query
+    Query -->|Form data| Proxy
+    Proxy -->|HTTPS same-origin| Endpoints
+    Endpoints -->|POST /screening| FastAPI
+    FastAPI -->|Validate & rule check| Models
+    Models -->|Predict scores| Calibrator
+    Calibrator -->|Calibrated probability| Conformal
+    Conformal -->|Interval + score| SHAP
+    SHAP -->|SHAP values| FastAPI
+    FastAPI -->|Response JSON| Endpoints
+    Endpoints -->|JSON response| Proxy
+    Proxy -->|HTTPS| Query
+    Query -->|Update UI| Storage
+
+    %% Storage connections
+    FastAPI -->|Write| Postgres
+    FastAPI -->|Read/Write| Redis
+    FastAPI -->|Auth check| Clerk
+
+    class CLIENT client
+    class SERVER server
+    class ML ml
+    class API api
+    classStorage storage
+```
+
 ### Performance Metrics
 
 | Model | F1 | AUC | Notes |
@@ -116,12 +182,6 @@ Built as a **Next.js 14 + FastAPI monorepo**, deployed as a split architecture: 
 | Conformal interval (90%) | — | — | `q ≈ 0.696`, coverage 0.883 |
 
 ### Model Evaluation
-
-<img src="plots/5_model_comparison.png" alt="Model Comparison" width="700" style="border-radius:8px;margin:12px 0"/>
-<img src="plots/7_feature_importance.png" alt="Feature Importance" width="700" style="border-radius:8px;margin:12px 0"/>
-<img src="plots/6_roc_curves.png" alt="ROC Curves" width="700" style="border-radius:8px;margin:12px 0"/>
-<img src="plots/4_boxplots_by_outcome.png" alt="Boxplots by Outcome" width="700" style="border-radius:8px;margin:12px 0"/>
-<img src="plots/5_glucose_vs_bmi.png" alt="Glucose vs BMI" width="700" style="border-radius:8px;margin:12px 0"/>
 
 ---
 
