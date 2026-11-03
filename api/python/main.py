@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from datetime import datetime
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -50,10 +51,32 @@ def create_app() -> FastAPI:
     app.include_router(cron.router, prefix="/api/v1", tags=["cron"])
     app.include_router(features.router, prefix="/api/v1", tags=["features"])
 
-    # Health check
+    recent_health_pings: list[dict] = []
+
+    # Health check with monitor telemetry
     @app.get("/health")
-    async def health_check():
-        return {"status": "healthy", "version": settings.VERSION}
+    async def health_check(request: Request):
+        ua = request.headers.get("user-agent", "unknown")
+        now_iso = datetime.utcnow().isoformat()
+        recent_health_pings.insert(0, {
+            "timestamp": now_iso,
+            "user_agent": ua,
+        })
+        if len(recent_health_pings) > 20:
+            recent_health_pings.pop()
+
+        uptimerobot_pings = [p for p in recent_health_pings if "uptimerobot" in p["user_agent"].lower()]
+
+        return {
+            "status": "healthy",
+            "version": settings.VERSION,
+            "monitors": {
+                "uptimerobot_detected": len(uptimerobot_pings) > 0,
+                "uptimerobot_last_ping": uptimerobot_pings[0]["timestamp"] if uptimerobot_pings else None,
+                "total_recorded_pings": len(recent_health_pings),
+                "recent_pings": recent_health_pings[:5],
+            }
+        }
 
     # Global exception handler
     @app.exception_handler(Exception)
