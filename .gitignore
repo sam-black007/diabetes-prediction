@@ -41,3 +41,6 @@ venv/
 
 .vercel
 .env*
+
+# Local scratch files
+scratch/

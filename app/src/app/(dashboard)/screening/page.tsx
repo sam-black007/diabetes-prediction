@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { ScreeningWizard } from '@/components/screening/ScreeningWizard';
 
 export const metadata = {
@@ -5,5 +6,9 @@ export const metadata = {
 };
 
 export default function ScreeningPage() {
-  return <ScreeningWizard />;
+  return (
+    <Suspense fallback={<div className="flex h-64 items-center justify-center text-sm text-muted-foreground">Loading screening wizard...</div>}>
+      <ScreeningWizard />
+    </Suspense>
+  );
 }

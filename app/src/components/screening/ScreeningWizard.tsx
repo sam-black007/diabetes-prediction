@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -35,6 +36,15 @@ export function ScreeningWizard() {
   const [result, setResult] = useState<ScreeningResult | null>(null);
   const [showLabModal, setShowLabModal] = useState(false);
   const { submit, isPending, queued, reset } = useSubmitScreening();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const presetParam = searchParams.get('preset');
+    if (presetParam === 'healthy' || presetParam === 'prediabetes' || presetParam === 'highRisk') {
+      loadPreset(presetParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const form = useForm<ScreeningFormValues>({
     resolver: zodResolver(screeningSchema),
