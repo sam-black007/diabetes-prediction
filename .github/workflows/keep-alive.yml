@@ -1,0 +1,21 @@
+name: Keep-Alive Backend
+
+on:
+  schedule:
+    # Ping every 12 minutes to prevent Render free-tier sleep (15-min inactivity timeout)
+    - cron: '*/12 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Render Health Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://diabetes-prediction-api-9hx8.onrender.com/health)
+          echo "Backend /health returned HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "Backend returned non-200 status: $HTTP_CODE"
+            exit 1
+          fi
