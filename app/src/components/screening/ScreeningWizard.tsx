@@ -4,12 +4,13 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeft, ArrowRight, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Progress } from '@/components/ui/Progress';
 import { NumberField, SelectField } from '@/components/screening/fields';
 import { ResultView } from '@/components/screening/ResultView';
+import { LabReportImportModal } from '@/components/screening/LabReportImportModal';
 import { useSubmitScreening } from '@/hooks/useScreening';
 import {
   screeningSchema,
@@ -32,6 +33,7 @@ const GLUCOSE_TYPES = [
 export function ScreeningWizard() {
   const [step, setStep] = useState(0);
   const [result, setResult] = useState<ScreeningResult | null>(null);
+  const [showLabModal, setShowLabModal] = useState(false);
   const { submit, isPending, queued, reset } = useSubmitScreening();
 
   const form = useForm<ScreeningFormValues>({
@@ -106,10 +108,45 @@ export function ScreeningWizard() {
     );
   }
 
+    function loadPreset(presetKey: 'healthy' | 'prediabetes' | 'highRisk') {
+    if (presetKey === 'healthy') {
+      setValue('glucose_mg_dl', 88);
+      setValue('glucose_type', 'fasting');
+      setValue('sbp', 116);
+      setValue('dbp', 74);
+      setValue('height_cm', 172);
+      setValue('weight_kg', 66);
+      setValue('age', 32);
+      setValue('sex', 'M');
+      setValue('family_history', false);
+    } else if (presetKey === 'prediabetes') {
+      setValue('glucose_mg_dl', 118);
+      setValue('glucose_type', 'fasting');
+      setValue('sbp', 132);
+      setValue('dbp', 84);
+      setValue('height_cm', 174);
+      setValue('weight_kg', 84);
+      setValue('age', 48);
+      setValue('sex', 'F');
+      setValue('family_history', true);
+    } else if (presetKey === 'highRisk') {
+      setValue('glucose_mg_dl', 165);
+      setValue('glucose_type', 'fasting');
+      setValue('sbp', 148);
+      setValue('dbp', 92);
+      setValue('height_cm', 170);
+      setValue('weight_kg', 96);
+      setValue('age', 58);
+      setValue('sex', 'M');
+      setValue('family_history', true);
+    }
+  }
+
   const progress = ((step + 1) / STEPS.length) * 100;
 
   return (
-    <Card>
+    <>
+      <Card>
       <CardHeader>
         <CardTitle className="text-xl">Diabetes risk screening</CardTitle>
         <CardDescription>
@@ -119,6 +156,57 @@ export function ScreeningWizard() {
       </CardHeader>
 
       <CardContent>
+        {/* Quick Clinical Profile Presets */}
+        <div className="mb-6 rounded-lg border border-primary/20 bg-muted/30 p-3.5">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+              <Sparkles className="h-3.5 w-3.5" /> Quick Clinical Presets
+            </span>
+            <span className="text-[11px] text-muted-foreground">Click to populate sample profile</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs bg-background hover:bg-emerald-500/10 hover:text-emerald-600 hover:border-emerald-500/30"
+              onClick={() => loadPreset('healthy')}
+            >
+              🟢 Healthy Baseline
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs bg-background hover:bg-amber-500/10 hover:text-amber-600 hover:border-amber-500/30"
+              onClick={() => loadPreset('prediabetes')}
+            >
+              🟡 Prediabetes Risk
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs bg-background hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
+              onClick={() => loadPreset('highRisk')}
+            >
+              🔴 High Risk Case
+            </Button>
+
+            <div className="h-4 w-px bg-border my-auto mx-1" />
+
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => setShowLabModal(true)}
+            >
+              📋 Paste / Import Lab Report
+            </Button>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
           {step === 0 && (
             <div className="grid gap-4 sm:grid-cols-2">
@@ -254,5 +342,12 @@ export function ScreeningWizard() {
         </form>
       </CardContent>
     </Card>
+      {showLabModal && (
+        <LabReportImportModal
+          setValue={setValue}
+          onClose={() => setShowLabModal(false)}
+        />
+      )}
+    </>
   );
 }

@@ -1,10 +1,11 @@
 import { z } from 'zod';
 
 const optionalNumber = (schema: z.ZodNumber) =>
-  z.preprocess(
-    (v) => (v === '' || v === null || Number.isNaN(v) ? undefined : v),
-    schema.optional()
-  );
+  z.preprocess((v) => {
+    if (v === '' || v === null || v === undefined) return undefined;
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isNaN(n) ? undefined : n;
+  }, schema.optional());
 
 export const screeningSchema = z
   .object({

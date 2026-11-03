@@ -1,7 +1,7 @@
 # Diabetes Risk Intelligence — Documentation
 
 > **Live:** https://diabetes-prediction-ka8j5q753-thavina-s-projects.vercel.app/  
-> **API:** https://diabetes-prediction-api-lemv.onrender.com
+> **API:** https://diabetes-prediction-api-9hx8.onrender.com
 
 This document covers the full architecture, deployment, configuration, and API reference for the diabetes risk screening platform.
 
@@ -103,7 +103,7 @@ diabetes-prediction/
 
 **Live URLs:**
 - Frontend: https://diabetes-prediction-ka8j5q753-thavina-s-projects.vercel.app/
-- API: https://diabetes-prediction-api-lemv.onrender.com
+- API: https://diabetes-prediction-api-9hx8.onrender.com
 
 **Steps:**
 

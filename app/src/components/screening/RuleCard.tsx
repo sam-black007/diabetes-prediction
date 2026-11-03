@@ -2,7 +2,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Card, CardContent } from '@/components/ui/Card';
 import { severityBadgeClass } from '@/lib/risk';
 import type { ClinicalRule } from '@/lib/types';
-import { cn } from '@/utils/utils';
+import { cn } from '@/lib/utils';
 
 export function RuleCard({ rule }: { rule: ClinicalRule }) {
   const severityClass = severityBadgeClass(rule.severity);

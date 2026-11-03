@@ -12,6 +12,8 @@ import { RiskBadge } from '@/components/screening/RiskBadge';
 import { RuleCard } from '@/components/screening/RuleCard';
 import { ShapChart } from '@/components/screening/ShapChart';
 import { ScreeningPdfButton } from '@/components/screening/ScreeningPdfButton';
+import { WhatIfSimulator } from '@/components/screening/WhatIfSimulator';
+import { DoctorDiscussionGuide } from '@/components/screening/DoctorDiscussionGuide';
 import { downloadExport } from '@/lib/api';
 import { useApiToken } from '@/lib/auth-token';
 import type { ScreeningResult } from '@/lib/types';
@@ -139,6 +141,12 @@ export function ResultView({ result }: { result: ScreeningResult }) {
           </CardContent>
         </Card>
       )}
+
+      {/* Interactive Risk & Goal Simulator */}
+      <WhatIfSimulator result={result} />
+
+      {/* Clinical Talking Points for Doctor Visit */}
+      <DoctorDiscussionGuide result={result} />
 
       <Separator />
 

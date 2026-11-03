@@ -168,20 +168,36 @@ def _get_booster():
 
 def _to_pima_vector(input_data: Any) -> dict:
     """Map a ScreeningInput-like object to PIMA feature values (raw units)."""
-    bmi = None
-    if getattr(input_data, "weight_kg", None) and getattr(input_data, "height_cm", None):
+    bmi = getattr(input_data, "bmi", None)
+    if (bmi is None or bmi == 0) and getattr(input_data, "weight_kg", None) and getattr(input_data, "height_cm", None):
         h_m = input_data.height_cm / 100.0
-        bmi = input_data.weight_kg / (h_m ** 2)
+        if h_m > 0:
+            bmi = round(input_data.weight_kg / (h_m ** 2), 1)
+
+    glucose_val = getattr(input_data, "glucose_mg_dl", None)
+    if getattr(input_data, "glucose_type", None) == "hba1c" and glucose_val is not None:
+        if glucose_val < 25.0:
+            glucose_val = round(28.7 * glucose_val - 46.7, 1)
+    elif getattr(input_data, "unit_preference", None) == "mmol_L" and glucose_val is not None:
+        if glucose_val < 35.0:
+            glucose_val = round(glucose_val * 18.0182, 1)
+
+    bp_val = getattr(input_data, "dbp", None)
+    if (bp_val is None or bp_val == 0) and getattr(input_data, "sbp", None):
+        bp_val = round(input_data.sbp * 0.65)
+
+    has_fh = getattr(input_data, "family_history", False)
+    dpf = 0.72 if has_fh else 0.35
 
     return {
         "Pregnancies": 1.0 if getattr(input_data, "pregnancy_status", None) in ("gestational", "preexisting") else 0.0,
-        "Glucose": input_data.glucose_mg_dl,
-        "BloodPressure": input_data.dbp,
+        "Glucose": glucose_val,
+        "BloodPressure": bp_val,
         "SkinThickness": None,
         "Insulin": None,
         "BMI": bmi,
-        "DiabetesPedigreeFunction": 0.5 if getattr(input_data, "family_history", False) else 0.3,
-        "Age": input_data.age,
+        "DiabetesPedigreeFunction": dpf,
+        "Age": getattr(input_data, "age", None),
     }
 
 

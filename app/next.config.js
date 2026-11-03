@@ -1,6 +1,10 @@
 const path = require('path');
 
-const apiInternalUrl = process.env.API_INTERNAL_URL || 'http://127.0.0.1:8000';
+const apiInternalUrl =
+  process.env.API_INTERNAL_URL ||
+  (process.env.NODE_ENV === 'development'
+    ? 'http://127.0.0.1:8000'
+    : 'https://diabetes-prediction-api-9hx8.onrender.com');
 
 /** @type {import('next').NextConfig} */
 const withPWA = require('next-pwa')({
@@ -55,7 +59,11 @@ const nextConfig = {
     return [
       {
         source: '/api/v1/:path*',
-        destination: 'https://diabetes-prediction-api-9hx8.onrender.com/api/v1/:path*',
+        destination: `${apiInternalUrl}/api/v1/:path*`,
+      },
+      {
+        source: '/health',
+        destination: `${apiInternalUrl}/health`,
       },
     ];
   },

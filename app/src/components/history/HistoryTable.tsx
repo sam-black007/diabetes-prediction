@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/Select';
 import { RiskBadge } from '@/components/screening/RiskBadge';
+import { HistoryTrendChart } from '@/components/history/HistoryTrendChart';
 import { useHistory } from '@/hooks/useHistory';
 import { cn } from '@/lib/utils';
 
@@ -65,6 +66,11 @@ export function HistoryTable() {
         <Alert variant="warning">
           <AlertDescription>Could not load history. Showing nothing.</AlertDescription>
         </Alert>
+      )}
+
+      {/* Longitudinal Risk Progression Chart */}
+      {!isLoading && rows.length >= 2 && (
+        <HistoryTrendChart screenings={rows} />
       )}
 
       {isLoading ? (
