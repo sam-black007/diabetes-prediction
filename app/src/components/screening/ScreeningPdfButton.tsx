@@ -32,13 +32,13 @@ export function ScreeningPdfButton({ result }: { result: ScreeningResult }) {
   }
 
   return (
-    <Button size="sm" onClick={handleClick} disabled={loading}>
+    <Button size="sm" onClick={handleClick} disabled={loading} className="text-xs gap-1.5 shadow-xs">
       {loading ? (
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
       ) : (
-        <FileText className="mr-2 h-4 w-4" />
+        <FileText className="h-3.5 w-3.5" />
       )}
-      PDF
+      Download PDF Report
     </Button>
   );
 }
