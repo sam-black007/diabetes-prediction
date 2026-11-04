@@ -19,35 +19,31 @@ interface NumberFieldProps extends React.InputHTMLAttributes<HTMLInputElement> {
   error?: string;
 }
 
-export function NumberField({
-  label,
-  hint,
-  unit,
-  error,
-  className,
-  id,
-  ...props
-}: NumberFieldProps) {
-  const fieldId = id ?? props.name;
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={fieldId}>
-        {label}
-        {unit && <span className="ml-1 text-xs text-muted-foreground">({unit})</span>}
-      </Label>
-      <Input
-        id={fieldId}
-        type="number"
-        inputMode="decimal"
-        className={cn(error && 'border-destructive focus-visible:ring-destructive', className)}
-        aria-invalid={Boolean(error)}
-        {...props}
-      />
-      {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
-      {error && <p className="text-xs text-destructive">{error}</p>}
-    </div>
-  );
-}
+export const NumberField = React.forwardRef<HTMLInputElement, NumberFieldProps>(
+  ({ label, hint, unit, error, className, id, ...props }, ref) => {
+    const fieldId = id ?? props.name;
+    return (
+      <div className="space-y-1.5">
+        <Label htmlFor={fieldId}>
+          {label}
+          {unit && <span className="ml-1 text-xs text-muted-foreground">({unit})</span>}
+        </Label>
+        <Input
+          ref={ref}
+          id={fieldId}
+          type="number"
+          inputMode="decimal"
+          className={cn(error && 'border-destructive focus-visible:ring-destructive', className)}
+          aria-invalid={Boolean(error)}
+          {...props}
+        />
+        {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </div>
+    );
+  }
+);
+NumberField.displayName = 'NumberField';
 
 interface SelectFieldProps {
   label: string;

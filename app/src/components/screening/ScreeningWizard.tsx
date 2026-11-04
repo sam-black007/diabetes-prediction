@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -53,6 +53,7 @@ const GLUCOSE_TYPES = [
 
 export function ScreeningWizard() {
   const [step, setStep] = useState(0);
+  const stepChangedAt = useRef(Date.now());
   const [result, setResult] = useState<ScreeningResult | null>(null);
   const [showLabModal, setShowLabModal] = useState(false);
   const { submit, isPending, queued, reset } = useSubmitScreening();
@@ -158,7 +159,10 @@ export function ScreeningWizard() {
 
   async function next() {
     const ok = await trigger(stepFields[step] as never);
-    if (ok) setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    if (ok) {
+      stepChangedAt.current = Date.now();
+      setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    }
   }
 
   function back() {
@@ -166,6 +170,15 @@ export function ScreeningWizard() {
   }
 
   async function onSubmit(values: ScreeningFormValues) {
+    // Guard 1: Never allow premature submission if enter key was pressed on Step 1 or 2
+    if (step < STEPS.length - 1) {
+      await next();
+      return;
+    }
+    // Guard 2: Prevent accidental submit within 400ms of entering the final step (protects against double-click)
+    if (Date.now() - stepChangedAt.current < 400) {
+      return;
+    }
     const payload = {
       ...values,
       medications: values.medications ?? [],
@@ -341,10 +354,20 @@ export function ScreeningWizard() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (step < STEPS.length - 1) {
+                  e.preventDefault();
+                  next();
+                }
+              }
+            }}
+            className="space-y-6"
+          >
             {/* Step 1: Glucose */}
-            {step === 0 && (
-              <div className="space-y-4">
+            <div className={cn("space-y-4", step !== 0 && "hidden")}>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <NumberField
                     label="Glucose"
@@ -373,12 +396,10 @@ export function ScreeningWizard() {
                     <span>Clinical range: {glucoseFeedback.label}</span>
                   </div>
                 )}
-              </div>
-            )}
+            </div>
 
             {/* Step 2: Vitals & Lipids */}
-            {step === 1 && (
-              <div className="space-y-4">
+            <div className={cn("space-y-4", step !== 1 && "hidden")}>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <NumberField
                     label="Systolic blood pressure"
@@ -456,12 +477,10 @@ export function ScreeningWizard() {
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+            </div>
 
             {/* Step 3: Demographics & History */}
-            {step === 2 && (
-              <div className="space-y-4">
+            <div className={cn("space-y-4", step !== 2 && "hidden")}>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <NumberField
                     label="Age"
@@ -504,8 +523,7 @@ export function ScreeningWizard() {
                     </label>
                   </div>
                 </div>
-              </div>
-            )}
+            </div>
 
             {/* Form Actions */}
             <div className={cn('flex items-center justify-between pt-4 border-t', step === 0 && 'justify-end')}>
@@ -516,11 +534,21 @@ export function ScreeningWizard() {
               )}
 
               {step < STEPS.length - 1 ? (
-                <Button type="button" onClick={next} className="gap-1.5">
-                  Next <ArrowRight className="h-4 w-4" />
+                <Button
+                  key="step-btn-next"
+                  type="button"
+                  onClick={next}
+                  className="gap-1.5"
+                >
+                  {step === 0 ? 'Next: Vitals & Lipids' : 'Next: Demographics (Step 3)'} <ArrowRight className="h-4 w-4" />
                 </Button>
               ) : (
-                <Button type="submit" disabled={isPending} className="gap-2 px-6">
+                <Button
+                  key="step-btn-submit"
+                  type="submit"
+                  disabled={isPending}
+                  className="gap-2 px-6"
+                >
                   {isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
