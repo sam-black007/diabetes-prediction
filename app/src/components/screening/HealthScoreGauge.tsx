@@ -1,28 +1,20 @@
-'use client'
+'use client';
 
-import { motion, useSpring, useReducedMotion } from 'motion/react'
-import { useEffect, useState } from 'react'
-import { RadialBarChart, RadialBar, PolarAngleAxis } from 'recharts'
-import { scoreBand } from '@/lib/risk'
+import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
+import { RadialBarChart, RadialBar, PolarAngleAxis } from 'recharts';
+import { scoreBand } from '@/lib/risk';
 
 export function HealthScoreGauge({ score }: { score: number }) {
-  const band = scoreBand(score)
-  const reduce = useReducedMotion()
+  const safeScore = typeof score === 'number' && !isNaN(score) ? Math.round(score) : 0;
+  const band = scoreBand(safeScore);
+  const [displayScore, setDisplayScore] = useState(safeScore);
 
-  // Animate gauge value from 0 → score using motion spring
-  const gaugeValue = useSpring(score, { stiffness: 200, damping: 15 })
-
-  const [displayScore, setDisplayScore] = useState(0)
   useEffect(() => {
-    if (reduce) {
-      setDisplayScore(score)
-      return undefined
-    }
-    const unsub = gaugeValue.on('change', (v) => setDisplayScore(Math.round(v as number)))
-    return () => unsub()
-  }, [gaugeValue, score, reduce])
+    setDisplayScore(safeScore);
+  }, [safeScore]);
 
-  const glow = score >= 70 ? 'drop-shadow-[0_0_20px_rgba(239,68,64,0.4)]' : ''
+  const glow = safeScore >= 70 ? 'drop-shadow-[0_0_20px_rgba(239,68,64,0.4)]' : '';
 
   return (
     <motion.div
@@ -52,10 +44,10 @@ export function HealthScoreGauge({ score }: { score: number }) {
         />
       </RadialBarChart>
       <div className="absolute flex flex-col items-center">
-        <span className="text-4xl font-bold" style={{ color: band.color }}>
-          {Math.round(displayScore)}
+        <span className="text-4xl font-bold tracking-tight" style={{ color: band.color }}>
+          {displayScore}
         </span>
-        <span className="text-xs text-muted-foreground">{band.label}</span>
+        <span className="text-xs font-medium text-muted-foreground">{band.label}</span>
       </div>
     </motion.div>
   );

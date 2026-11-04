@@ -242,16 +242,16 @@ export function ScreeningWizard() {
               key={s.title}
               type="button"
               onClick={() => {
-                if (isCompleted) setStep(idx);
+                stepChangedAt.current = Date.now();
+                setStep(idx);
               }}
-              disabled={!isCompleted && step !== idx}
               className={cn(
-                'flex flex-col sm:flex-row items-center sm:items-start gap-2.5 rounded-xl border p-3 text-left transition-all',
+                'flex flex-col sm:flex-row items-center sm:items-start gap-2.5 rounded-xl border p-3 text-left transition-all cursor-pointer',
                 isActive
-                  ? 'border-primary bg-primary/5 shadow-sm'
+                  ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary'
                   : isCompleted
-                  ? 'border-border/60 bg-background/50 hover:bg-muted/40 cursor-pointer'
-                  : 'border-border/30 bg-background/30 opacity-60 cursor-not-allowed'
+                  ? 'border-border/80 bg-background/70 hover:bg-muted/40'
+                  : 'border-border/40 bg-background/40 hover:bg-muted/30'
               )}
             >
               <div
