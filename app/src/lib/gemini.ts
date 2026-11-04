@@ -10,7 +10,7 @@
 import type { ScreeningResult, ClinicalRule } from '@/lib/types';
 
 export const GEMINI_STORAGE_KEY = 'dri_gemini_api_key';
-export const GEMINI_MODEL = 'gemini-1.5-flash';
+export const GEMINI_MODEL = 'gemini-3.5-flash';
 
 export interface GeminiMessage {
   role: 'user' | 'model';

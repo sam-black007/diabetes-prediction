@@ -100,7 +100,7 @@ export function GeminiDynamicInsights({ result }: GeminiDynamicInsightsProps) {
       setCurrentKey(apiKeyInput.trim());
       toast({
         title: 'Gemini API connected!',
-        description: `Connected to ${test.model || 'Gemini 1.5 Flash'}. Refreshing clinical insights...`,
+        description: `Connected to ${test.model || 'Gemini 3.5 Flash'}. Refreshing clinical insights...`,
       });
       setShowKeyModal(false);
       loadSynthesis(apiKeyInput.trim());
