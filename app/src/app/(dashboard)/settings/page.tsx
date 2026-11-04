@@ -4,6 +4,7 @@ import { Separator } from '@/components/ui/Separator';
 import { ApiKeysClient } from '@/components/settings/ApiKeysClient';
 import { FeatureFlagsPanel } from '@/components/settings/FeatureFlagsPanel';
 import { ThemeSegmentedControl } from '@/components/theme/ThemeToggle';
+import { GeminiSettingsCard } from '@/components/settings/GeminiSettingsCard';
 
 export const metadata = { title: 'Settings — Diabetes Risk Intelligence' };
 
@@ -34,6 +35,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <GeminiSettingsCard />
       <ApiKeysClient />
       <FeatureFlagsPanel />
     </div>

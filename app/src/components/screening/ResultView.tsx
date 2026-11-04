@@ -25,6 +25,7 @@ import { ScreeningPdfButton } from '@/components/screening/ScreeningPdfButton';
 import { WhatIfSimulator } from '@/components/screening/WhatIfSimulator';
 import { DoctorDiscussionGuide } from '@/components/screening/DoctorDiscussionGuide';
 import { PersonalizedActionPlan } from '@/components/screening/PersonalizedActionPlan';
+import { GeminiDynamicInsights } from '@/components/screening/GeminiDynamicInsights';
 import { downloadExport } from '@/lib/api';
 import { useApiToken } from '@/lib/auth-token';
 import type { ScreeningResult } from '@/lib/types';
@@ -201,6 +202,9 @@ export function ResultView({ result }: { result: ScreeningResult }) {
       )}
 
       {/* Personalized Medical Action Plan (ADA 2026 Diet & Lifestyle) */}
+      {/* Google Gemini Dynamic Clinical Synthesis & AI Doctor Q&A */}
+      <GeminiDynamicInsights result={result} />
+
       <PersonalizedActionPlan result={result} />
 
       {/* Interactive Risk & Goal Simulator */}
