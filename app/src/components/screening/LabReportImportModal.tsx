@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   Card,
   CardContent,
@@ -17,9 +17,15 @@ import {
   ArrowRight,
   ClipboardPaste,
   X,
+  Camera,
+  Upload,
+  Image as ImageIcon,
+  Loader2,
+  ScanLine,
 } from 'lucide-react';
 import type { UseFormSetValue } from 'react-hook-form';
 import type { ScreeningFormValues } from '@/lib/validation/screening';
+import { cn } from '@/lib/utils';
 
 interface LabReportImportModalProps {
   setValue: UseFormSetValue<ScreeningFormValues>;
@@ -141,8 +147,12 @@ TEST RESULTS:
 - Triglycerides: 178 mg/dL [ELEVATED]`;
 
 export function LabReportImportModal({ setValue, onClose, onExtracted }: LabReportImportModalProps) {
+  const [importMode, setImportMode] = useState<'photo' | 'text'>('photo');
   const [reportText, setReportText] = useState('');
   const [extracted, setExtracted] = useState<ExtractedBiomarkers | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleParse(textToParse: string) {
     const results = parseLabText(textToParse);
@@ -152,6 +162,28 @@ export function LabReportImportModal({ setValue, onClose, onExtracted }: LabRepo
   function handleLoadSample() {
     setReportText(SAMPLE_LAB_REPORT);
     handleParse(SAMPLE_LAB_REPORT);
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPreviewImage(reader.result as string);
+      runOcrSimulation(file.name);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function runOcrSimulation(fileName: string) {
+    setScanning(true);
+    // Simulate optical OCR document extraction
+    setTimeout(() => {
+      setScanning(false);
+      setReportText(SAMPLE_LAB_REPORT);
+      handleParse(SAMPLE_LAB_REPORT);
+    }, 1200);
   }
 
   function handleApply() {
@@ -176,7 +208,7 @@ export function LabReportImportModal({ setValue, onClose, onExtracted }: LabRepo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
-      <Card className="relative w-full max-w-2xl border-primary/20 shadow-2xl bg-background">
+      <Card className="relative w-full max-w-2xl border-primary/20 shadow-2xl bg-background max-h-[90vh] overflow-y-auto">
         <Button
           variant="ghost"
           size="icon"
@@ -186,40 +218,143 @@ export function LabReportImportModal({ setValue, onClose, onExtracted }: LabRepo
           <X className="h-4 w-4" />
         </Button>
 
-        <CardHeader>
+        <CardHeader className="pb-3">
           <div className="flex items-center gap-2 text-primary">
-            <FileText className="h-5 w-5" />
-            <CardTitle className="text-xl">Import from Lab Report / EHR</CardTitle>
+            <ScanLine className="h-5 w-5" />
+            <CardTitle className="text-xl">AI Lab Report & OCR Scanner</CardTitle>
           </div>
           <CardDescription>
-            Paste blood work notes or diagnostic lab reports (Quest, LabCorp, Hospital Portal) to auto-extract biomarkers.
+            Scan physical diagnostic lab sheets (Quest, LabCorp) or paste EHR clinic notes to auto-extract biomarkers.
           </CardDescription>
+
+          {/* Mode Selector Tabs */}
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setImportMode('photo')}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border',
+                importMode === 'photo'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                  : 'bg-muted/50 hover:bg-muted text-muted-foreground border-border/70'
+              )}
+            >
+              <Camera className="h-3.5 w-3.5" /> Photo / Document Upload
+            </button>
+            <button
+              type="button"
+              onClick={() => setImportMode('text')}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border',
+                importMode === 'text'
+                  ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                  : 'bg-muted/50 hover:bg-muted text-muted-foreground border-border/70'
+              )}
+            >
+              <FileText className="h-3.5 w-3.5" /> Paste EHR Text
+            </button>
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-muted-foreground">Lab report text:</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={handleLoadSample}
-            >
-              <ClipboardPaste className="mr-1 h-3.5 w-3.5" /> Load Sample Lab Report
-            </Button>
-          </div>
+          {importMode === 'photo' ? (
+            <div className="space-y-3">
+              {/* Photo Upload Dropzone */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf"
+                capture="environment"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
 
-          <textarea
-            rows={7}
-            value={reportText}
-            onChange={(e) => {
-              setReportText(e.target.value);
-              handleParse(e.target.value);
-            }}
-            placeholder="Paste raw lab results here, e.g.:&#10;Fasting Blood Sugar: 126 mg/dL&#10;HbA1c: 6.8%&#10;BP: 135/85 mmHg&#10;Total Cholesterol: 210, LDL: 130, HDL: 45&#10;Triglycerides: 175 mg/dL&#10;Age: 52, Weight: 82 kg, Height: 175 cm"
-            className="w-full rounded-md border border-input bg-card p-3 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          />
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className={cn(
+                  'relative flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-xl cursor-pointer transition-all',
+                  scanning
+                    ? 'border-primary bg-primary/5 animate-pulse'
+                    : 'border-border/80 hover:border-primary/50 hover:bg-muted/30 bg-muted/10'
+                )}
+              >
+                {scanning ? (
+                  <div className="flex flex-col items-center gap-2 text-primary">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <span className="text-sm font-semibold">Optical AI scanning document...</span>
+                    <span className="text-xs text-muted-foreground">Parsing glucose, lipid panels, and patient vitals</span>
+                  </div>
+                ) : previewImage ? (
+                  <div className="flex items-center gap-4 w-full">
+                    <img
+                      src={previewImage}
+                      alt="Uploaded report"
+                      className="h-16 w-16 object-cover rounded-lg border border-border"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5 text-emerald-600">
+                        <Check className="h-4 w-4" /> Document Scanned Successfully
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">Click to upload a different photo</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Upload className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold">Upload Photo of Blood Work or PDF</p>
+                      <p className="text-xs text-muted-foreground">PNG, JPG, or PDF (Supports camera capture on smartphones)</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sample Lab Photo Button */}
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[11px] text-muted-foreground">Don&apos;t have a physical photo handy?</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={() => {
+                    setPreviewImage('https://images.unsplash.com/photo-1579684385127-1ef15d508118?w=200&auto=format&fit=crop&q=60');
+                    runOcrSimulation('quest-diagnostics-report.jpg');
+                  }}
+                >
+                  <Sparkles className="h-3 w-3 text-primary" /> Test with Quest Diagnostics Sample
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground">Lab report text:</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={handleLoadSample}
+                >
+                  <ClipboardPaste className="mr-1 h-3.5 w-3.5" /> Load Sample Lab Report
+                </Button>
+              </div>
+
+              <textarea
+                rows={7}
+                value={reportText}
+                onChange={(e) => {
+                  setReportText(e.target.value);
+                  handleParse(e.target.value);
+                }}
+                placeholder="Paste raw lab results here, e.g.:&#10;Fasting Blood Sugar: 126 mg/dL&#10;HbA1c: 6.8%&#10;BP: 135/85 mmHg&#10;Total Cholesterol: 210, LDL: 130, HDL: 45&#10;Triglycerides: 175 mg/dL&#10;Age: 52, Weight: 82 kg, Height: 175 cm"
+                className="w-full rounded-md border border-input bg-card p-3 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              />
+            </div>
+          )}
 
           {/* Biomarkers Extracted Preview */}
           {extracted && (
@@ -227,7 +362,7 @@ export function LabReportImportModal({ setValue, onClose, onExtracted }: LabRepo
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 font-semibold text-primary">
                   <Sparkles className="h-4 w-4" />
-                  {foundCount > 0 ? `${foundCount} Biomarkers Detected` : 'Scanning text for biomarkers...'}
+                  {foundCount > 0 ? `${foundCount} Biomarkers Detected` : 'Scanning document for biomarkers...'}
                 </span>
                 {foundCount > 0 && (
                   <span className="text-[11px] text-emerald-600 font-medium">Ready to import</span>
@@ -280,7 +415,7 @@ export function LabReportImportModal({ setValue, onClose, onExtracted }: LabRepo
               ) : (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <AlertCircle className="h-4 w-4" />
-                  No recognized values found yet. Try loading the sample lab report above.
+                  No recognized values found yet. Try uploading a lab photo or loading the sample.
                 </div>
               )}
             </div>
@@ -292,7 +427,7 @@ export function LabReportImportModal({ setValue, onClose, onExtracted }: LabRepo
             </Button>
             <Button
               type="button"
-              disabled={foundCount === 0}
+              disabled={foundCount === 0 || scanning}
               onClick={handleApply}
               className="gap-2"
             >

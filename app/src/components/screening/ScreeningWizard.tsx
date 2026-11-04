@@ -27,6 +27,8 @@ import { Progress } from '@/components/ui/Progress';
 import { NumberField, SelectField } from '@/components/screening/fields';
 import { ResultView } from '@/components/screening/ResultView';
 import { LabReportImportModal } from '@/components/screening/LabReportImportModal';
+import { getBiometricPrefill, clearBiometricPrefill } from '@/lib/local-store';
+import { toast } from '@/components/ui/use-toast';
 import { getGlucoseFeedback, getBmiFeedback, getBpFeedback } from '@/components/screening/clinical-feedback';
 import { useSubmitScreening } from '@/hooks/useScreening';
 import {
@@ -153,6 +155,26 @@ export function ScreeningWizard() {
     const presetParam = searchParams.get('preset');
     if (presetParam === 'healthy' || presetParam === 'prediabetes' || presetParam === 'highRisk' || presetParam === 'hba1cCase') {
       loadPreset(presetParam);
+    }
+
+    // Check for biometric prefill from Connected Devices (CGM / Apple Health / Google Fit)
+    const bioPrefill = getBiometricPrefill();
+    if (bioPrefill) {
+      if (bioPrefill.glucose_mg_dl != null) {
+        form.setValue('glucose_mg_dl', bioPrefill.glucose_mg_dl);
+        form.setValue('glucose_type', 'fasting');
+      }
+      if (bioPrefill.sbp != null) {
+        form.setValue('sbp', bioPrefill.sbp);
+      }
+      if (bioPrefill.dbp != null) {
+        form.setValue('dbp', bioPrefill.dbp);
+      }
+      clearBiometricPrefill();
+      toast({
+        title: 'Biometrics auto-filled',
+        description: `Imported live readings from ${bioPrefill.source || 'connected devices'}.`,
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);

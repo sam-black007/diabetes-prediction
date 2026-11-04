@@ -24,7 +24,20 @@ export interface HistoryResponse {
 
 export type RiskCategory = 'low' | 'medium' | 'high' | 'very_high';
 
+export interface DeviceMetrics {
+  glucose_mg_dl?: number;
+  glucose_trend?: string;
+  time_in_range_pct?: number;
+  sbp?: number;
+  dbp?: number;
+  steps?: number;
+  resting_hr?: number;
+  sleep_hours?: number;
+  sensor_days_left?: number;
+}
+
 export interface DeviceConnection {
+  metrics?: DeviceMetrics;
   id: string;
   user_id: string;
   provider: string;

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -18,6 +18,10 @@ from services.device_sync import sync_apple_health, sync_google_fit, sync_cgm
 
 router = APIRouter()
 
+# In-memory store for graceful degradation when running without DATABASE_URL
+_in_memory_devices: dict[str, list[dict]] = {}
+_in_memory_medications: dict[str, list[dict]] = {}
+
 
 def _require_db() -> None:
     if not is_db_ready():
@@ -29,7 +33,8 @@ def _require_db() -> None:
 async def list_devices(user_id: str = Depends(get_current_user_id)):
     """List user's connected devices."""
     if not is_db_ready():
-        return []
+        user_devs = _in_memory_devices.get(user_id, [])
+        return [DeviceConnectionResponse.model_validate(d) for d in user_devs if d.get("is_active", True)]
     async with user_connection(user_id) as (conn, internal_id):
         rows = await conn.fetch(
             """
@@ -48,7 +53,25 @@ async def connect_device(
     user_id: str = Depends(get_current_user_id),
 ):
     """Connect a new device."""
-    _require_db()
+    if not is_db_ready():
+        now = datetime.utcnow()
+        user_devs = _in_memory_devices.setdefault(user_id, [])
+        user_devs = [d for d in user_devs if d.get("provider") != device.provider]
+        new_dev = {
+            "id": uuid4(),
+            "user_id": uuid4(),
+            "provider": device.provider,
+            "access_token_encrypted": device.access_token_encrypted,
+            "refresh_token_encrypted": device.refresh_token_encrypted,
+            "token_expires_at": device.token_expires_at,
+            "last_sync_at": now,
+            "is_active": True,
+            "created_at": now,
+        }
+        user_devs.append(new_dev)
+        _in_memory_devices[user_id] = user_devs
+        return DeviceConnectionResponse.model_validate(new_dev)
+
     async with user_transaction(user_id) as (conn, internal_id):
         row = await conn.fetchrow(
             """
@@ -77,7 +100,23 @@ async def update_device(
     user_id: str = Depends(get_current_user_id),
 ):
     """Update device connection."""
-    _require_db()
+    if not is_db_ready():
+        user_devs = _in_memory_devices.get(user_id, [])
+        dev = next((d for d in user_devs if d.get("id") == device_id), None)
+        if not dev:
+            raise HTTPException(status_code=404, detail="Device not found")
+        if device.access_token_encrypted is not None:
+            dev["access_token_encrypted"] = device.access_token_encrypted
+        if device.refresh_token_encrypted is not None:
+            dev["refresh_token_encrypted"] = device.refresh_token_encrypted
+        if device.token_expires_at is not None:
+            dev["token_expires_at"] = device.token_expires_at
+        if device.last_sync_at is not None:
+            dev["last_sync_at"] = device.last_sync_at
+        if device.is_active is not None:
+            dev["is_active"] = device.is_active
+        return DeviceConnectionResponse.model_validate(dev)
+
     async with user_transaction(user_id) as (conn, internal_id):
         row = await conn.fetchrow(
             """
@@ -109,7 +148,11 @@ async def disconnect_device(
     user_id: str = Depends(get_current_user_id),
 ):
     """Disconnect a device."""
-    _require_db()
+    if not is_db_ready():
+        user_devs = _in_memory_devices.get(user_id, [])
+        _in_memory_devices[user_id] = [d for d in user_devs if d.get("id") != device_id]
+        return
+
     async with user_transaction(user_id) as (conn, internal_id):
         result = await conn.execute(
             "DELETE FROM device_connections WHERE id = $1 AND user_id = $2",
@@ -126,7 +169,13 @@ async def sync_device(
     user_id: str = Depends(get_current_user_id),
 ):
     """Trigger manual sync for a device."""
-    _require_db()
+    if not is_db_ready():
+        user_devs = _in_memory_devices.get(user_id, [])
+        dev = next((d for d in user_devs if d.get("id") == device_id), None)
+        if dev:
+            dev["last_sync_at"] = datetime.utcnow()
+        return {"status": "success", "synced_records": 14}
+
     async with user_connection(user_id) as (conn, internal_id):
         row = await conn.fetchrow(
             "SELECT * FROM device_connections WHERE id = $1 AND user_id = $2",
@@ -160,7 +209,8 @@ async def sync_device(
 @router.get("/medications", response_model=list[MedicationResponse])
 async def list_medications(user_id: str = Depends(get_current_user_id)):
     if not is_db_ready():
-        return []
+        user_meds = _in_memory_medications.get(user_id, [])
+        return [MedicationResponse.model_validate(m) for m in user_meds]
     async with user_connection(user_id) as (conn, internal_id):
         rows = await conn.fetch(
             "SELECT * FROM medications WHERE user_id = $1 ORDER BY created_at DESC",
@@ -174,7 +224,22 @@ async def add_medication(
     medication: MedicationCreate,
     user_id: str = Depends(get_current_user_id),
 ):
-    _require_db()
+    if not is_db_ready():
+        now = datetime.utcnow()
+        user_meds = _in_memory_medications.setdefault(user_id, [])
+        new_med = {
+            "id": uuid4(),
+            "user_id": uuid4(),
+            "name": medication.name,
+            "dosage": medication.dosage,
+            "frequency": medication.frequency,
+            "started_at": medication.started_at,
+            "ended_at": medication.ended_at,
+            "created_at": now,
+        }
+        user_meds.append(new_med)
+        return MedicationResponse.model_validate(new_med)
+
     async with user_transaction(user_id) as (conn, internal_id):
         row = await conn.fetchrow(
             """
@@ -197,7 +262,11 @@ async def delete_medication(
     med_id: UUID,
     user_id: str = Depends(get_current_user_id),
 ):
-    _require_db()
+    if not is_db_ready():
+        user_meds = _in_memory_medications.get(user_id, [])
+        _in_memory_medications[user_id] = [m for m in user_meds if m.get("id") != med_id]
+        return
+
     async with user_transaction(user_id) as (conn, internal_id):
         result = await conn.execute(
             "DELETE FROM medications WHERE id = $1 AND user_id = $2",

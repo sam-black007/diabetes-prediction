@@ -24,6 +24,7 @@ import { ShapChart } from '@/components/screening/ShapChart';
 import { ScreeningPdfButton } from '@/components/screening/ScreeningPdfButton';
 import { WhatIfSimulator } from '@/components/screening/WhatIfSimulator';
 import { DoctorDiscussionGuide } from '@/components/screening/DoctorDiscussionGuide';
+import { PersonalizedActionPlan } from '@/components/screening/PersonalizedActionPlan';
 import { downloadExport } from '@/lib/api';
 import { useApiToken } from '@/lib/auth-token';
 import type { ScreeningResult } from '@/lib/types';
@@ -198,6 +199,9 @@ export function ResultView({ result }: { result: ScreeningResult }) {
           </CardContent>
         </Card>
       )}
+
+      {/* Personalized Medical Action Plan (ADA 2026 Diet & Lifestyle) */}
+      <PersonalizedActionPlan result={result} />
 
       {/* Interactive Risk & Goal Simulator */}
       <WhatIfSimulator result={result} />
