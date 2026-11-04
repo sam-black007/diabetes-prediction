@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
 const API_DOCS = `${process.env.NEXT_PUBLIC_API_URL ?? 'https://diabetes-prediction-api-9hx8.onrender.com'}/docs`;
 
@@ -65,6 +66,7 @@ export default function HomePage() {
               </span>
               ML Engine Live
             </div>
+            <ThemeToggle />
             <Link href="/screening">
               <Button size="sm" className="gap-1.5 font-medium shadow-sm">
                 Start Screening <ArrowRight className="h-4 w-4" />

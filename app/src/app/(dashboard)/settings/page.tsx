@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/Button';
 import { Separator } from '@/components/ui/Separator';
 import { ApiKeysClient } from '@/components/settings/ApiKeysClient';
 import { FeatureFlagsPanel } from '@/components/settings/FeatureFlagsPanel';
+import { ThemeSegmentedControl } from '@/components/theme/ThemeToggle';
 
 export const metadata = { title: 'Settings — Diabetes Risk Intelligence' };
 
@@ -23,12 +24,12 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Appearance</CardTitle>
-          <CardDescription>Theme follows your system setting.</CardDescription>
+          <CardDescription>Select your preferred color theme or match your device.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <Separator className="mb-4" />
+        <CardContent className="space-y-3">
+          <ThemeSegmentedControl />
           <p className="text-xs text-muted-foreground">
-            Dark mode is supported automatically via your OS preference.
+            Choose between Light mode, Dark mode, or follow your operating system automatically.
           </p>
         </CardContent>
       </Card>

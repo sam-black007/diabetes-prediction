@@ -11,6 +11,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
 const NAV = [
   { href: '/screening', label: 'New screening', icon: ClipboardPlus },
@@ -57,6 +58,11 @@ export function Sidebar() {
 
       {/* System Status & Docs */}
       <div className="border-t p-3 space-y-2">
+        <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-1.5 text-xs">
+          <span className="text-muted-foreground">Appearance</span>
+          <ThemeToggle />
+        </div>
+
         <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-xs">
           <span className="text-muted-foreground">ML Model</span>
           <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">

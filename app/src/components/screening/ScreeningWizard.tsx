@@ -93,43 +93,64 @@ export function ScreeningWizard() {
     typeof watchedDbp === 'number' ? watchedDbp : undefined
   );
 
-  function loadPreset(presetKey: 'healthy' | 'prediabetes' | 'highRisk') {
-    if (presetKey === 'healthy') {
-      setValue('glucose_mg_dl', 88);
-      setValue('glucose_type', 'fasting');
-      setValue('sbp', 116);
-      setValue('dbp', 74);
-      setValue('height_cm', 172);
-      setValue('weight_kg', 66);
-      setValue('age', 32);
-      setValue('sex', 'M');
-      setValue('family_history', false);
-    } else if (presetKey === 'prediabetes') {
-      setValue('glucose_mg_dl', 118);
-      setValue('glucose_type', 'fasting');
-      setValue('sbp', 132);
-      setValue('dbp', 84);
-      setValue('height_cm', 174);
-      setValue('weight_kg', 84);
-      setValue('age', 48);
-      setValue('sex', 'F');
-      setValue('family_history', true);
-    } else if (presetKey === 'highRisk') {
-      setValue('glucose_mg_dl', 165);
-      setValue('glucose_type', 'fasting');
-      setValue('sbp', 148);
-      setValue('dbp', 92);
-      setValue('height_cm', 170);
-      setValue('weight_kg', 96);
-      setValue('age', 58);
-      setValue('sex', 'M');
-      setValue('family_history', true);
-    }
+  const PRESETS: Record<'healthy' | 'prediabetes' | 'highRisk' | 'hba1cCase', Partial<ScreeningFormValues>> = {
+    healthy: {
+      glucose_mg_dl: 88,
+      glucose_type: 'fasting',
+      sbp: 116,
+      dbp: 74,
+      height_cm: 172,
+      weight_kg: 66,
+      age: 32,
+      sex: 'M',
+      family_history: false,
+    },
+    prediabetes: {
+      glucose_mg_dl: 118,
+      glucose_type: 'fasting',
+      sbp: 132,
+      dbp: 84,
+      height_cm: 174,
+      weight_kg: 84,
+      age: 48,
+      sex: 'F',
+      family_history: true,
+    },
+    highRisk: {
+      glucose_mg_dl: 165,
+      glucose_type: 'fasting',
+      sbp: 148,
+      dbp: 92,
+      height_cm: 170,
+      weight_kg: 96,
+      age: 58,
+      sex: 'M',
+      family_history: true,
+    },
+    hba1cCase: {
+      glucose_mg_dl: 7.2,
+      glucose_type: 'hba1c',
+      sbp: 138,
+      dbp: 88,
+      height_cm: 176,
+      weight_kg: 89,
+      age: 52,
+      sex: 'M',
+      family_history: true,
+    },
+  };
+
+  function loadPreset(presetKey: 'healthy' | 'prediabetes' | 'highRisk' | 'hba1cCase') {
+    const preset = PRESETS[presetKey];
+    form.reset({
+      ...form.getValues(),
+      ...preset,
+    });
   }
 
   useEffect(() => {
     const presetParam = searchParams.get('preset');
-    if (presetParam === 'healthy' || presetParam === 'prediabetes' || presetParam === 'highRisk') {
+    if (presetParam === 'healthy' || presetParam === 'prediabetes' || presetParam === 'highRisk' || presetParam === 'hba1cCase') {
       loadPreset(presetParam);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -307,6 +328,15 @@ export function ScreeningWizard() {
                 onClick={() => loadPreset('highRisk')}
               >
                 🔴 High Risk Case
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs bg-background hover:bg-purple-500/10 hover:text-purple-600 hover:border-purple-500/30"
+                onClick={() => loadPreset('hba1cCase')}
+              >
+                🟣 HbA1c Case (7.2%)
               </Button>
             </div>
           </div>

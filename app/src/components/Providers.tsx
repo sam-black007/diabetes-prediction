@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ClerkProvider, useAuth } from '@clerk/nextjs';
 import { useState, type ReactNode } from 'react';
 import { TokenContext, type TokenGetter } from '@/lib/auth-token';
+import { ThemeProvider } from '@/components/theme/ThemeProvider';
 
 function ClerkTokenBridge({ children }: { children: ReactNode }) {
   const { getToken } = useAuth();
@@ -37,14 +38,16 @@ export function Providers({ children }: { children: ReactNode }) {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {clerkEnabled ? (
-        <ClerkProvider publishableKey={clerkKey}>
-          <ClerkTokenBridge>{children}</ClerkTokenBridge>
-        </ClerkProvider>
-      ) : (
-        children
-      )}
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        {clerkEnabled ? (
+          <ClerkProvider publishableKey={clerkKey}>
+            <ClerkTokenBridge>{children}</ClerkTokenBridge>
+          </ClerkProvider>
+        ) : (
+          children
+        )}
+      </QueryClientProvider>
+    </ThemeProvider>
   );
 }

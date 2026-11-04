@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { AuthButtons } from '@/components/auth/AuthButtons';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { OfflineSyncManager } from '@/components/pwa/OfflineSyncManager';
 import { cn } from '@/lib/utils';
 
@@ -49,7 +50,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <span className="hidden md:inline-block text-base font-semibold">{title}</span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -57,6 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </span>
               <span className="hidden sm:inline">Backend</span> Live
             </div>
+            <ThemeToggle />
             <AuthButtons />
           </div>
         </header>
