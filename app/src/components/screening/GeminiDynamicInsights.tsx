@@ -1,437 +1,340 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import {
-  AlertCircle,
-  Bot,
-  Check,
+  Activity,
+  ArrowRight,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Copy,
-  ExternalLink,
-  HelpCircle,
-  Key,
-  Lightbulb,
-  MessageSquare,
-  RefreshCw,
-  Send,
-  Sparkles,
+  FileCheck2,
+  Languages,
+  Moon,
+  Salad,
+  ShieldCheck,
   Stethoscope,
-  Trash2,
-  Zap,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Input } from '@/components/ui/Input';
-import { Separator } from '@/components/ui/Separator';
-import {
-  generateGeminiClinicalSynthesis,
-  askGeminiQuestion,
-  getGeminiApiKey,
-  setGeminiApiKey,
-  removeGeminiApiKey,
-  testGeminiApiKey,
-  type GeminiClinicalSynthesis,
-  type GeminiMessage,
-} from '@/lib/gemini';
+import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 import type { ScreeningResult } from '@/lib/types';
-import { toast } from '@/components/ui/use-toast';
+import {
+  calculateIDRS,
+  calculateTgHdlRatio,
+  getAsianIndianBmiCategory,
+  type FastingFestivalType,
+} from '@/lib/indian-clinical';
 import { cn } from '@/lib/utils';
 
-interface GeminiDynamicInsightsProps {
-  result: ScreeningResult;
-}
+const LANGUAGES = [
+  { code: 'en', label: 'English' },
+  { code: 'hi', label: 'हिंदी' },
+  { code: 'ta', label: 'தமிழ்' },
+  { code: 'te', label: 'తెలుగు' },
+  { code: 'bn', label: 'বাংলা' },
+];
 
-export function GeminiDynamicInsights({ result }: GeminiDynamicInsightsProps) {
-  const [synthesis, setSynthesis] = useState<GeminiClinicalSynthesis | null>(null);
-  const [loadingSynthesis, setLoadingSynthesis] = useState(true);
-  
-  // API Key management modal state
-  const [showKeyModal, setShowKeyModal] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [currentKey, setCurrentKey] = useState<string | null>(null);
-  const [testingKey, setTestingKey] = useState(false);
+export function GeminiDynamicInsights({ result }: { result: ScreeningResult }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [selectedLang, setSelectedLang] = useState('en');
+  const [fastingMode, setFastingMode] = useState<FastingFestivalType>('none');
 
-  // Chat state
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<GeminiMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [sendingChat, setSendingChat] = useState(false);
+  const { input } = result;
+  const bmi =
+    input.height_cm && input.weight_kg
+      ? parseFloat((input.weight_kg / Math.pow(input.height_cm / 100, 2)).toFixed(1))
+      : 24.0;
+
+  const idrs = calculateIDRS({
+    age: input.age ?? 45,
+    sex: (input.sex as 'M' | 'F') ?? 'M',
+    activity: 'moderate',
+    familyHistoryDiabeticParents: input.family_history ? 1 : 0,
+  });
+
+  const tgHdl = calculateTgHdlRatio(input.triglycerides_mg_dl, input.hdl_mg_dl);
+  const asianBmi = getAsianIndianBmiCategory(bmi);
 
   useEffect(() => {
-    const key = getGeminiApiKey();
-    setCurrentKey(key);
-    if (key) setApiKeyInput(key);
+    fetchIndianSynthesis();
+  }, [result, selectedLang, fastingMode]);
 
-    loadSynthesis(key || undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result]);
-
-  async function loadSynthesis(keyToUse?: string) {
-    setLoadingSynthesis(true);
+  async function fetchIndianSynthesis() {
+    setLoading(true);
     try {
-      const data = await generateGeminiClinicalSynthesis(result, keyToUse);
-      setSynthesis(data);
+      const res = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientProfile: {
+            glucose: input.glucose_mg_dl,
+            glucoseType: input.glucose_type,
+            sbp: input.sbp,
+            dbp: input.dbp,
+            bmi,
+            age: input.age,
+            sex: input.sex,
+            familyHistory: input.family_history,
+          },
+          language: selectedLang,
+          fastingMode,
+          idrsScore: idrs.score,
+          tgHdlRatio: tgHdl.ratio,
+        }),
+      });
+
+      const response = await res.json();
+      if (response.ok && response.data) {
+        setData(response.data);
+      }
     } catch {
-      toast({ variant: 'destructive', title: 'Could not generate AI synthesis' });
+      // Graceful silence
     } finally {
-      setLoadingSynthesis(false);
+      setLoading(false);
     }
   }
 
-  async function handleSaveKey() {
-    if (!apiKeyInput.trim()) {
-      removeGeminiApiKey();
-      setCurrentKey(null);
-      toast({ title: 'Gemini API key removed' });
-      setShowKeyModal(false);
-      loadSynthesis(undefined);
+  function toggleSpeech() {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
       return;
     }
-
-    setTestingKey(true);
-    const test = await testGeminiApiKey(apiKeyInput.trim());
-    setTestingKey(false);
-
-    if (test.ok) {
-      setGeminiApiKey(apiKeyInput.trim());
-      setCurrentKey(apiKeyInput.trim());
-      toast({
-        title: 'Gemini API connected!',
-        description: `Connected to ${test.model || 'Gemini 3.5 Flash'}. Refreshing clinical insights...`,
-      });
-      setShowKeyModal(false);
-      loadSynthesis(apiKeyInput.trim());
-    } else {
-      toast({
-        variant: 'destructive',
-        title: 'Invalid Gemini API key',
-        description: test.error || 'Please verify your API key from Google AI Studio.',
-      });
-    }
+    if (!data?.executiveSummary) return;
+    const utterance = new SpeechSynthesisUtterance(data.executiveSummary);
+    utterance.rate = 0.92;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
   }
-
-  async function handleSendMessage(promptText?: string) {
-    const textToSend = promptText || chatInput;
-    if (!textToSend.trim() || sendingChat) return;
-
-    const userMsg: GeminiMessage = { role: 'user', text: textToSend.trim() };
-    const newHistory = [...chatMessages, userMsg];
-    setChatMessages(newHistory);
-    if (!promptText) setChatInput('');
-    setSendingChat(true);
-
-    try {
-      const answer = await askGeminiQuestion(result, textToSend.trim(), chatMessages, currentKey || undefined);
-      setChatMessages([...newHistory, { role: 'model', text: answer }]);
-    } catch {
-      toast({ variant: 'destructive', title: 'Failed to get AI response' });
-    } finally {
-      setSendingChat(false);
-    }
-  }
-
-  const QUICK_QUESTIONS = [
-    'Can I reverse this risk level with diet?',
-    'What foods should I avoid with this glucose level?',
-    'What specific tests should I ask my doctor for?',
-    'Why does blood pressure affect diabetes risk?',
-  ];
 
   return (
-    <Card className="border-border/80 shadow-sm overflow-hidden bg-gradient-to-b from-card via-card to-muted/20">
-      {/* Header */}
-      <CardHeader className="p-4 sm:p-5 border-b bg-muted/30">
+    <Card className="border border-slate-200/80 dark:border-slate-800 shadow-sm bg-card overflow-hidden rounded-2xl">
+      <CardHeader className="p-4 sm:p-5 border-b border-border/50 bg-slate-50/50 dark:bg-slate-900/40">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-sm shrink-0">
-              <Bot className="h-5 w-5" />
+            <div className="h-9 w-9 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 flex items-center justify-center shadow-xs shrink-0 font-bold">
+              <Stethoscope className="h-4.5 w-4.5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <CardTitle className="text-base font-bold flex items-center gap-1.5">
-                  Google Gemini Dynamic Clinical Synthesis
-                </CardTitle>
+                <h3 className="text-sm font-semibold text-foreground">
+                  Indian Metabolic Intelligence
+                </h3>
                 <Badge
                   variant="outline"
-                  className={cn(
-                    'text-[10px] px-2 py-0.5 font-medium border',
-                    currentKey
-                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
-                      : 'bg-primary/10 text-primary border-primary/20'
-                  )}
+                  className="text-[10px] px-2 py-0.5 font-medium border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                 >
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  {currentKey ? 'Live GenAI Active' : 'Gemini 1.5 Flash'}
+                  <ShieldCheck className="h-3 w-3 mr-1" /> ICMR & RSSDI Guidelines
                 </Badge>
               </div>
-              <CardDescription className="text-xs mt-0.5">
-                AI endocrinologist evaluation dynamically tailored to your exact metabolic biomarkers
-              </CardDescription>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Calibrated to South Asian visceral adiposity and insulin kinetics
+              </p>
             </div>
           </div>
 
-          {/* Key Management Button */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowKeyModal((prev) => !prev)}
-              className="h-8 text-xs gap-1.5 font-medium hover:border-primary/50"
-            >
-              <Key className="h-3.5 w-3.5 text-primary" />
-              {currentKey ? 'API Key Configured' : 'Connect Gemini API Key'}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => loadSynthesis(currentKey || undefined)}
-              disabled={loadingSynthesis}
-              className="h-8 w-8 p-0"
-              title="Regenerate dynamic analysis"
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5', loadingSynthesis && 'animate-spin')} />
-            </Button>
+          <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl border border-border/50">
+            <Languages className="h-3.5 w-3.5 text-muted-foreground ml-1.5 mr-0.5" />
+            {LANGUAGES.map((lang) => (
+              <button
+                key={lang.code}
+                onClick={() => setSelectedLang(lang.code)}
+                className={cn(
+                  'px-2 py-1 text-xs rounded-lg font-medium transition-all',
+                  selectedLang === lang.code
+                    ? 'bg-background text-foreground shadow-2xs font-semibold'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {lang.label}
+              </button>
+            ))}
           </div>
         </div>
       </CardHeader>
 
       <CardContent className="p-4 sm:p-5 space-y-5">
-        {/* API Key Modal / Drawer */}
-        {showKeyModal && (
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="rounded-xl border border-border/80 bg-slate-50/70 dark:bg-slate-900/30 p-3 space-y-1">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold flex items-center gap-2">
-                <Key className="h-4 w-4 text-primary" />
-                Google Gemini API Configuration
-              </h4>
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
-              >
-                Get Free API Key <ExternalLink className="h-3 w-3" />
-              </a>
+              <span className="text-[11px] font-semibold text-muted-foreground">MDRF IDRS Score</span>
+              <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0', idrs.color)}>
+                {idrs.category} Risk
+              </Badge>
             </div>
+            <div className="text-xl font-bold text-foreground">
+              {idrs.score} <span className="text-xs font-normal text-muted-foreground">/ 100</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-tight">{idrs.recommendation}</p>
+          </div>
 
-            <p className="text-xs text-muted-foreground">
-              Enter your Google AI Studio API key to enable live, streaming dynamic clinical synthesis and conversational medical Q&A with Gemini 1.5 Flash. The key is securely stored in your browser.
+          <div className="rounded-xl border border-border/80 bg-slate-50/70 dark:bg-slate-900/30 p-3 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground">TG / HDL Ratio</span>
+              <span className="text-[10px] font-semibold text-foreground">
+                {tgHdl.ratio ? `${tgHdl.ratio}x` : 'Pending Lipids'}
+              </span>
+            </div>
+            <div className="text-sm font-semibold text-foreground">{tgHdl.status}</div>
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              {tgHdl.clinicalInterpretation}
             </p>
+          </div>
 
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Input
-                type="password"
-                placeholder="AIzaSy..."
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                className="text-xs font-mono"
-              />
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  size="sm"
-                  onClick={handleSaveKey}
-                  disabled={testingKey}
-                  className="text-xs gap-1.5"
-                >
-                  {testingKey ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                  {testingKey ? 'Validating...' : 'Save & Verify'}
-                </Button>
-                {currentKey && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      removeGeminiApiKey();
-                      setCurrentKey(null);
-                      setApiKeyInput('');
-                      toast({ title: 'API Key Cleared' });
-                    }}
-                    className="text-xs text-destructive hover:bg-destructive/10"
-                  >
-                    Clear
-                  </Button>
+          <div className="rounded-xl border border-border/80 bg-slate-50/70 dark:bg-slate-900/30 p-3 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-muted-foreground">Asian Indian BMI</span>
+              <span className="text-xs font-bold text-foreground">{bmi} kg/m²</span>
+            </div>
+            <div className={cn('text-sm font-semibold', asianBmi.color)}>{asianBmi.category}</div>
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              ICMR cutoffs: Overweight ≥ 23, Obese ≥ 25
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between p-2.5 rounded-xl border border-border/60 bg-muted/20">
+          <div className="flex items-center gap-2">
+            <Moon className="h-4 w-4 text-amber-500" />
+            <span className="text-xs font-medium text-foreground">Fasting & Festival Mode:</span>
+          </div>
+          <div className="flex gap-1">
+            {[
+              { id: 'none', label: 'Standard' },
+              { id: 'navratri_vrat', label: 'Vrat / Upvaas' },
+              { id: 'ramadan', label: 'Ramadan' },
+              { id: 'diwali_sweets', label: 'Festival Sweets' },
+            ].map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setFastingMode(f.id as FastingFestivalType)}
+                className={cn(
+                  'px-2 py-1 text-[11px] rounded-lg font-medium transition-all',
+                  fastingMode === f.id
+                    ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
                 )}
-              </div>
-            </div>
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
 
-        {/* Dynamic AI Analysis Content */}
-        {loadingSynthesis ? (
-          <div className="py-8 flex flex-col items-center justify-center text-center space-y-2">
-            <RefreshCw className="h-6 w-6 text-primary animate-spin" />
-            <p className="text-xs text-muted-foreground font-medium">
-              Generating dynamic endocrinologist synthesis with Gemini AI...
-            </p>
+        {loading ? (
+          <div className="space-y-3 py-3 animate-pulse">
+            <div className="h-4 bg-muted rounded w-3/4" />
+            <div className="h-16 bg-muted/60 rounded-xl" />
+            <div className="h-28 bg-muted/40 rounded-xl" />
           </div>
-        ) : synthesis ? (
+        ) : data ? (
           <div className="space-y-4">
-            {/* Executive Summary */}
-            <div className="rounded-xl border bg-card p-4 space-y-1.5 shadow-2xs">
-              <div className="flex items-center gap-2 text-primary font-semibold text-xs tracking-wider uppercase">
-                <Stethoscope className="h-3.5 w-3.5" /> Clinical Executive Assessment
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/30 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                  Executive Clinical Triage
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleSpeech}
+                  className="h-7 text-xs gap-1 font-medium text-primary hover:text-primary"
+                >
+                  {isSpeaking ? <VolumeX className="h-3.5 w-3.5 text-red-500" /> : <Volume2 className="h-3.5 w-3.5" />}
+                  {isSpeaking ? 'Stop' : 'Listen'}
+                </Button>
               </div>
               <p className="text-sm font-medium leading-relaxed text-foreground">
-                {synthesis.summary}
+                {data.executiveSummary}
               </p>
-            </div>
-
-            {/* Metabolic Mechanics & Physiological Rationale */}
-            <div className="rounded-xl border bg-muted/30 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-semibold text-xs tracking-wider uppercase">
-                <Lightbulb className="h-3.5 w-3.5" /> Metabolic Risk Mechanics
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                {synthesis.metabolicMechanics}
-              </p>
-            </div>
-
-            {/* Grid: Physician Discussion & Lifestyle Priorities */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {/* Physician Discussion */}
-              <div className="rounded-xl border bg-card p-4 space-y-2.5">
-                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  Physician Discussion Points
-                </span>
-                <ul className="space-y-2">
-                  {synthesis.physicianDiscussionPoints.map((point, i) => (
-                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
-                      <span className="font-semibold text-primary mt-0.5">•</span>
-                      <span>{point}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Lifestyle Priorities */}
-              <div className="rounded-xl border bg-card p-4 space-y-2.5">
-                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                  <Zap className="h-4 w-4 text-amber-500" />
-                  Target Metabolic Priorities
-                </span>
-                <ul className="space-y-2">
-                  {synthesis.keyLifestylePriorities.map((item, i) => (
-                    <li key={i} className="text-xs text-muted-foreground flex items-start gap-2">
-                      <span className="font-semibold text-amber-500 mt-0.5">•</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            {/* Engine Attribution Badge */}
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 px-1">
-              <span>{synthesis.generatedBy}</span>
-              {synthesis.isSimulatedFallback && (
-                <button
-                  onClick={() => setShowKeyModal(true)}
-                  className="text-primary hover:underline font-medium flex items-center gap-1"
-                >
-                  Connect API Key for Live GenAI <ExternalLink className="h-3 w-3" />
-                </button>
+              {data.festivalFastingAdvice && fastingMode !== 'none' && (
+                <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/20 mt-2">
+                  <strong>Fasting Notice:</strong> {data.festivalFastingAdvice}
+                </div>
               )}
+            </div>
+
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Salad className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  Prescribed Indian Dietary Interventions
+                </span>
+                <span className="text-[10px] text-muted-foreground">Glycemic-Indexed Swaps</span>
+              </div>
+
+              <div className="grid gap-2.5 sm:grid-cols-3">
+                {data.dietarySwaps?.map((item: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className="rounded-xl border border-border/80 bg-card p-3 space-y-2 flex flex-col justify-between"
+                  >
+                    <div>
+                      <span className="text-[10px] font-semibold text-red-500 uppercase tracking-wide block">
+                        Limit
+                      </span>
+                      <p className="text-xs font-medium text-foreground line-through decoration-red-400/60">
+                        {item.staple}
+                      </p>
+                    </div>
+
+                    <div className="pt-1 border-t border-border/40">
+                      <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide flex items-center gap-1">
+                        <ArrowRight className="h-3 w-3" /> Adopt
+                      </span>
+                      <p className="text-xs font-semibold text-foreground">{item.swap}</p>
+                      <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+                        {item.clinicalReason}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 pt-1">
+              <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-2">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Activity className="h-3.5 w-3.5 text-amber-500" /> Target Macronutrient Balance
+                </span>
+                <div className="space-y-1 text-xs text-muted-foreground">
+                  <div>
+                    <span className="font-medium text-foreground">Carbs: </span>
+                    {data.macronutrientTargets?.carbohydrates}
+                  </div>
+                  <div>
+                    <span className="font-medium text-foreground">Protein: </span>
+                    {data.macronutrientTargets?.protein}
+                  </div>
+                  <div>
+                    <span className="font-medium text-foreground">Healthy Fats: </span>
+                    {data.macronutrientTargets?.fats}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border/80 bg-card p-3.5 space-y-2">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <FileCheck2 className="h-3.5 w-3.5 text-blue-500" />
+                  Recommended Physician Lab Orders
+                </span>
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  {data.confirmatoryTests?.map((test: string, i: number) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                      <span>{test}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
         ) : null}
-
-        <Separator />
-
-        {/* Interactive "Ask Dr. Gemini" Q&A Chat */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-primary" />
-              <h4 className="text-sm font-semibold">Ask Dr. Gemini About Your Results</h4>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setChatOpen((prev) => !prev)}
-              className="text-xs h-7 gap-1"
-            >
-              {chatOpen ? 'Hide Chat' : 'Open AI Doctor Chat'}
-              {chatOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </Button>
-          </div>
-
-          {chatOpen && (
-            <div className="rounded-xl border bg-card p-4 space-y-3">
-              {/* Quick Prompt Pills */}
-              <div className="space-y-1.5">
-                <p className="text-[11px] text-muted-foreground font-medium">Suggested clinical questions:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {QUICK_QUESTIONS.map((q, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleSendMessage(q)}
-                      disabled={sendingChat}
-                      className="rounded-full border border-border/80 bg-muted/40 hover:bg-muted px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors text-left"
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Chat Message Stream */}
-              {chatMessages.length > 0 && (
-                <div className="space-y-3 max-h-72 overflow-y-auto p-2 rounded-lg bg-muted/20 border border-border/40">
-                  {chatMessages.map((msg, i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        'flex gap-2.5 text-xs leading-relaxed rounded-xl p-3',
-                        msg.role === 'user'
-                          ? 'bg-primary/10 text-foreground ml-6 border border-primary/20'
-                          : 'bg-card text-foreground mr-6 border border-border shadow-2xs'
-                      )}
-                    >
-                      {msg.role === 'model' && (
-                        <div className="h-6 w-6 rounded-md bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shrink-0 mt-0.5">
-                          <Bot className="h-3.5 w-3.5" />
-                        </div>
-                      )}
-                      <div className="space-y-1 flex-1">
-                        <span className="font-semibold text-[10px] uppercase text-muted-foreground block">
-                          {msg.role === 'user' ? 'You' : 'Dr. Gemini (AI Endocrinologist)'}
-                        </span>
-                        <p>{msg.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Chat Input Bar */}
-              <div className="flex gap-2 pt-1">
-                <Input
-                  placeholder="Ask a question about your glucose, diet, medications, or lab values..."
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSendMessage();
-                  }}
-                  disabled={sendingChat}
-                  className="text-xs"
-                />
-                <Button
-                  size="sm"
-                  onClick={() => handleSendMessage()}
-                  disabled={!chatInput.trim() || sendingChat}
-                  className="gap-1.5 shrink-0"
-                >
-                  {sendingChat ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                  Ask
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
       </CardContent>
     </Card>
   );
