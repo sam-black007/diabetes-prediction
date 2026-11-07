@@ -98,3 +98,39 @@ export function getAsianIndianBmiCategory(bmi: number): { category: string; colo
   if (bmi <= 24.9) return { category: 'Overweight (ICMR Cutoff ≥ 23)', color: 'text-amber-500' };
   return { category: 'Obese (ICMR Cutoff ≥ 25)', color: 'text-red-500' };
 }
+
+export interface WHtRResult {
+  ratio: number;
+  category: 'Optimal' | 'Increased Risk' | 'High Visceral Risk';
+  status: string;
+  color: string;
+  clinicalNote: string;
+}
+
+export function calculateWHtR(waistCm: number, heightCm: number): WHtRResult {
+  const ratio = parseFloat((waistCm / heightCm).toFixed(2));
+  if (ratio >= 0.6) {
+    return {
+      ratio,
+      category: 'High Visceral Risk',
+      status: 'Substantial Central Adiposity',
+      color: 'text-red-600 dark:text-red-400',
+      clinicalNote: 'High visceral/ectopic fat distribution typical of South Asian thin-fat phenotype.',
+    };
+  } else if (ratio >= 0.5) {
+    return {
+      ratio,
+      category: 'Increased Risk',
+      status: 'Borderline Central Fat',
+      color: 'text-amber-600 dark:text-amber-400',
+      clinicalNote: 'Borderline abdominal fat elevation. Targeted core and aerobic training recommended.',
+    };
+  }
+  return {
+    ratio,
+    category: 'Optimal',
+    status: 'Optimal Adiposity',
+    color: 'text-emerald-600 dark:text-emerald-400',
+    clinicalNote: 'Favorable waist-to-height ratio (< 0.50). Low visceral abdominal adiposity.',
+  };
+}

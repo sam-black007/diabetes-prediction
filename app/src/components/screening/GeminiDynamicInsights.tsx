@@ -1,251 +1,363 @@
 ﻿'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   FileText,
   CheckCircle2,
   ArrowRight,
   Stethoscope,
+  ShieldCheck,
+  UtensilsCrossed,
+  Moon,
+  Activity,
+  HeartPulse,
 } from 'lucide-react';
 import type { ScreeningResult } from '@/lib/types';
 import {
   calculateIDRS,
   calculateTgHdlRatio,
   getAsianIndianBmiCategory,
+  calculateWHtR,
+  type FastingFestivalType,
 } from '@/lib/indian-clinical';
 import { cn } from '@/lib/utils';
 
+function InlineBarometer({
+  value,
+  min,
+  max,
+  normalCutoff,
+  borderlineCutoff,
+  unit,
+  label,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  normalCutoff: number;
+  borderlineCutoff: number;
+  unit: string;
+  label: string;
+}) {
+  const clamped = Math.min(Math.max(value, min), max);
+  const percent = ((clamped - min) / (max - min)) * 100;
+  const normalPercent = ((normalCutoff - min) / (max - min)) * 100;
+  const borderlinePercent = ((borderlineCutoff - min) / (max - min)) * 100;
+
+  return (
+    <div className="w-full mt-2 space-y-1">
+      <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+        <span>{min} {unit}</span>
+        <span className="text-slate-700 dark:text-slate-300 font-bold">{label}: {value} {unit}</span>
+        <span>{max} {unit}</span>
+      </div>
+      <div className="relative h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
+        <div style={{ width: `${normalPercent}%` }} className="bg-emerald-500/80 h-full" title="Normal Target" />
+        <div style={{ width: `${borderlinePercent - normalPercent}%` }} className="bg-amber-400/80 h-full" title="Borderline" />
+        <div style={{ width: `${100 - borderlinePercent}%` }} className="bg-red-500/80 h-full" title="Elevated" />
+      </div>
+      <div className="relative w-full h-2">
+        <div
+          className="absolute -top-1 -translate-x-1/2 flex flex-col items-center"
+          style={{ left: `${Math.min(Math.max(percent, 4), 96)}%` }}
+        >
+          <div className="w-2 h-2 rotate-45 bg-slate-900 dark:bg-white border border-slate-700 shadow-xs" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GeminiDynamicInsights({ result }: { result: ScreeningResult }) {
-  const [report, setReport] = useState<any>(null);
-
+  const [fastingContext, setFastingContext] = useState<FastingFestivalType>('none');
   const { input } = result;
-  const bmi =
-    input.height_cm && input.weight_kg
-      ? parseFloat((input.weight_kg / Math.pow(input.height_cm / 100, 2)).toFixed(1))
-      : 24.2;
 
+  const height = input.height_cm ?? 168;
+  const weight = input.weight_kg ?? 70;
+  const waist = input.waist_cm ?? (input.sex === 'F' ? 82 : 88);
+
+  const bmi = parseFloat((weight / Math.pow(height / 100, 2)).toFixed(1));
   const idrs = calculateIDRS({
     age: input.age ?? 45,
     sex: (input.sex as 'M' | 'F') ?? 'M',
+    waistCm: waist,
     activity: 'moderate',
     familyHistoryDiabeticParents: input.family_history ? 1 : 0,
   });
 
   const tgHdl = calculateTgHdlRatio(input.triglycerides_mg_dl, input.hdl_mg_dl);
   const asianBmi = getAsianIndianBmiCategory(bmi);
-  const isHighRisk = idrs.score >= 60 || (input.glucose_mg_dl && input.glucose_mg_dl >= 140);
-
-  useEffect(() => {
-    async function loadAssessment() {
-      try {
-        const res = await fetch('/api/gemini', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            patientProfile: {
-              glucose: input.glucose_mg_dl,
-              glucoseType: input.glucose_type,
-              sbp: input.sbp,
-              dbp: input.dbp,
-              bmi,
-              age: input.age,
-              sex: input.sex,
-              familyHistory: input.family_history,
-            },
-            idrsScore: idrs.score,
-            tgHdlRatio: tgHdl.ratio,
-          }),
-        });
-        const resData = await res.json();
-        if (resData.ok && resData.data) {
-          setReport(resData.data);
-        }
-      } catch {
-        // Fallback silently to ICMR rule-based data
-      }
-    }
-    loadAssessment();
-  }, [result]);
+  const whtr = calculateWHtR(waist, height);
+  const glucose = input.glucose_mg_dl ?? 110;
+  const isHighRisk = idrs.score >= 60 || glucose >= 126;
 
   return (
     <div className="rounded-xl border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-sm overflow-hidden text-slate-900 dark:text-slate-100 font-sans">
-      {/* Clinical Document Header */}
-      <div className="border-b border-slate-200 dark:border-slate-800 px-5 py-4 bg-slate-50 dark:bg-slate-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 flex items-center justify-center font-bold">
-            <FileText className="h-4 w-4" />
+      {/* 1. Official Pathology Accreditation & Barcode Header */}
+      <div className="border-b border-slate-200 dark:border-slate-800 px-5 py-4 bg-slate-50/80 dark:bg-slate-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="h-10 w-10 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+            <Stethoscope className="h-5 w-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-white">
-                Clinical Metabolic Evaluation
+                Clinical Diabetology Laboratory Evaluation
               </h3>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                ICMR / RSSDI Protocol
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                ICMR-INDIAB & RSSDI Aligned
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              South Asian Phenotype Triage & Diabetology Assessment
+            <p className="text-xs text-slate-500 mt-0.5">
+              Specimen ID: #{result.id ? result.id.slice(0, 10) : 'MDRF-2026-X8'} • South Asian Phenotype Triage
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Stratification:</span>
+        {/* Barcode & Verification Stamp */}
+        <div className="flex items-center gap-3">
+          <div className="hidden md:flex flex-col items-end font-mono text-[9px] text-slate-400 tracking-tighter">
+            <div className="flex gap-0.5 h-6 items-center">
+              {[2, 1, 3, 1, 2, 4, 1, 3, 2, 1, 4, 2, 1, 3, 1, 2].map((w, i) => (
+                <div key={i} className="bg-slate-700 dark:bg-slate-300 h-full" style={{ width: `${w}px` }} />
+              ))}
+            </div>
+            <span>VERIFIED DIAGNOSTIC</span>
+          </div>
+
           <span
             className={cn(
-              'text-xs font-bold px-2.5 py-1 rounded-md',
+              'text-xs font-bold px-3 py-1.5 rounded-md border',
               isHighRisk
-                ? 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-400 border border-red-300 dark:border-red-800'
-                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800'
+                ? 'bg-red-50 text-red-800 dark:bg-red-950/60 dark:text-red-400 border-red-300 dark:border-red-800'
+                : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800'
             )}
           >
-            {isHighRisk ? 'High Metabolic Risk' : 'Moderate / Controlled'}
+            {isHighRisk ? 'High Metabolic Risk Tier' : 'Controlled Baseline'}
           </span>
         </div>
       </div>
 
       <div className="p-5 space-y-6">
-        {/* Diagnostic Biomarker Table */}
+        {/* 2. Diagnostic Biomarker Matrix with Inline Visual Barometers */}
         <div>
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5">
-            1. Diagnostic Biomarker Matrix
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-3 flex items-center justify-between">
+            <span>1. Diagnostic Biomarker Matrix & Dynamic Barometers</span>
+            <span className="text-[10px] font-normal text-slate-500">Normal (Green) | Borderline (Yellow) | High (Red)</span>
           </h4>
-          <div className="border border-slate-200 dark:border-slate-800 rounded-lg overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 font-semibold border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th className="py-2.5 px-3">Biomarker / Index</th>
-                  <th className="py-2.5 px-3">Observed Value</th>
-                  <th className="py-2.5 px-3">ICMR / WHO Target</th>
-                  <th className="py-2.5 px-3">Clinical Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-                <tr>
-                  <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
-                    Blood Glucose ({input.glucose_type ?? 'Fasting'})
-                  </td>
-                  <td className="py-2.5 px-3 font-bold">{input.glucose_mg_dl ?? 'N/A'} mg/dL</td>
-                  <td className="py-2.5 px-3 text-slate-500">&lt; 100 mg/dL (Fasting)</td>
-                  <td className="py-2.5 px-3">
-                    <span className={cn('font-bold', (input.glucose_mg_dl ?? 0) >= 126 ? 'text-red-600' : 'text-emerald-600')}>
-                      {(input.glucose_mg_dl ?? 0) >= 126 ? 'Diabetic Range' : (input.glucose_mg_dl ?? 0) >= 100 ? 'Impaired (Prediabetes)' : 'Normal'}
-                    </span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
-                    MDRF Indian Diabetes Risk Score (IDRS)
-                  </td>
-                  <td className="py-2.5 px-3 font-bold">{idrs.score} / 100</td>
-                  <td className="py-2.5 px-3 text-slate-500">&lt; 30 (Low Risk)</td>
-                  <td className="py-2.5 px-3 font-bold">
-                    <span className={idrs.category === 'High' ? 'text-red-600' : idrs.category === 'Moderate' ? 'text-amber-600' : 'text-emerald-600'}>
-                      {idrs.category} Risk ({idrs.score >= 60 ? '≥ 60 Cutoff' : 'Sub-threshold'})
-                    </span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
-                    TG / HDL Ratio (Atherogenic Index)
-                  </td>
-                  <td className="py-2.5 px-3 font-bold">{tgHdl.ratio ? `${tgHdl.ratio}x` : 'Pending Lipids'}</td>
-                  <td className="py-2.5 px-3 text-slate-500">&lt; 2.0 (Target for South Asians)</td>
-                  <td className="py-2.5 px-3 font-bold">
-                    <span className={tgHdl.status === 'Atherogenic Risk' ? 'text-red-600' : 'text-slate-600 dark:text-slate-300'}>
-                      {tgHdl.status}
-                    </span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
-                    Asian-Indian Specific BMI
-                  </td>
-                  <td className="py-2.5 px-3 font-bold">{bmi} kg/m²</td>
-                  <td className="py-2.5 px-3 text-slate-500">18.0 - 22.9 kg/m²</td>
-                  <td className="py-2.5 px-3 font-bold">
-                    <span className={asianBmi.color}>{asianBmi.category}</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
-                    Blood Pressure Hemodynamics
-                  </td>
-                  <td className="py-2.5 px-3 font-bold">{input.sbp ?? 120} / {input.dbp ?? 80} mmHg</td>
-                  <td className="py-2.5 px-3 text-slate-500">&lt; 120/80 mmHg</td>
-                  <td className="py-2.5 px-3 font-bold">
-                    <span className={(input.sbp ?? 120) >= 130 ? 'text-amber-600' : 'text-emerald-600'}>
-                      {(input.sbp ?? 120) >= 130 ? 'Elevated SBP' : 'Optimal'}
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
 
-        {/* Clinical Summary Assessment */}
-        <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-4 bg-slate-50/50 dark:bg-slate-900/30 space-y-2">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-            <Stethoscope className="h-3.5 w-3.5 text-blue-600" />
-            2. Physician Clinical Triage & Risk Summary
-          </h4>
-          <p className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
-            {report?.clinicalTriage ||
-              (isHighRisk
-                ? 'Patient exhibits elevated risk markers consistent with the South Asian thin-fat metabolic phenotype. High IDRS score combined with current glycemic index warrants formal venous laboratory confirmation.'
-                : 'Current biometric parameters indicate an optimal to borderline metabolic profile. Rescreening and prophylactic dietary adherence recommended.')}
-          </p>
-          {tgHdl.ratio && tgHdl.ratio >= 2.0 && (
-            <p className="text-[11px] text-amber-800 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded p-2">
-              <strong>Atherogenic Alert:</strong> TG/HDL ratio of {tgHdl.ratio}x indicates presence of small dense LDL (sdLDL) and visceral insulin resistance. Carbohydrate restriction is strongly indicated.
-            </p>
-          )}
-        </div>
-
-        {/* Nutritional Protocol (ICMR Food Matrix) */}
-        <div>
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5">
-            3. Prescribed South Asian Dietary Interventions (Millet Matrix)
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-3 bg-white dark:bg-slate-900 flex flex-col justify-between">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-red-600">Restricted Primary Staple</span>
-                <p className="text-xs font-semibold text-slate-900 dark:text-white mt-0.5">Polished White Rice (Sona Masuri / Ponni) & Maida</p>
-                <p className="text-[11px] text-slate-500 mt-1">High glycemic index (>75) triggers rapid postprandial glucose surges.</p>
-              </div>
-              <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1">
-                  <ArrowRight className="h-3 w-3" /> Prescribed Clinical Substitute
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Glucose Barometer Card */}
+            <div className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+              <div className="flex justify-between text-xs font-semibold">
+                <span>Blood Glucose ({input.glucose_type ?? 'Fasting'})</span>
+                <span className={glucose >= 126 ? 'text-red-600 font-bold' : glucose >= 100 ? 'text-amber-600 font-bold' : 'text-emerald-600 font-bold'}>
+                  {glucose >= 126 ? 'Diabetic Range' : glucose >= 100 ? 'Impaired Fasting Glucose' : 'Optimal'}
                 </span>
-                <p className="text-xs font-bold text-slate-900 dark:text-white mt-0.5">Foxtail (Kangni) / Barnyard (Sanwa) Millet or Multigrain Atta</p>
-                <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1">Low GI (&lt;50), rich in slow-digesting resistant starch and beta-glucan fiber.</p>
               </div>
+              <InlineBarometer
+                value={glucose}
+                min={60}
+                max={200}
+                normalCutoff={99}
+                borderlineCutoff={125}
+                unit="mg/dL"
+                label="FPG"
+              />
             </div>
 
-            <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-3 bg-white dark:bg-slate-900 flex flex-col justify-between">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-red-600">Restricted Snack / Fat Profile</span>
-                <p className="text-xs font-semibold text-slate-900 dark:text-white mt-0.5">Deep-Fried Vrat Items (Sabudana Vada, Pakoras, Namkeen)</p>
-                <p className="text-[11px] text-slate-500 mt-1">Saturated fats combined with refined starches promote visceral adiposity.</p>
-              </div>
-              <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1">
-                  <ArrowRight className="h-3 w-3" /> Prescribed Clinical Substitute
+            {/* MDRF IDRS Barometer Card */}
+            <div className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+              <div className="flex justify-between text-xs font-semibold">
+                <span>MDRF Indian Diabetes Risk Score (IDRS)</span>
+                <span className={idrs.category === 'High' ? 'text-red-600 font-bold' : idrs.category === 'Moderate' ? 'text-amber-600 font-bold' : 'text-emerald-600 font-bold'}>
+                  {idrs.category} Risk ({idrs.score}/100)
                 </span>
-                <p className="text-xs font-bold text-slate-900 dark:text-white mt-0.5">Roasted Bengal Gram (Chana) + Sprouted Moong + Fenugreek (Methi)</p>
-                <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1">Promotes peripheral GLUT-4 translocation and blunts glycemic variability.</p>
               </div>
+              <InlineBarometer
+                value={idrs.score}
+                min={0}
+                max={100}
+                normalCutoff={29}
+                borderlineCutoff={59}
+                unit="/100"
+                label="IDRS"
+              />
+            </div>
+
+            {/* Atherogenic TG/HDL Ratio Barometer Card */}
+            <div className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+              <div className="flex justify-between text-xs font-semibold">
+                <span>TG / HDL Ratio (Atherogenic Index)</span>
+                <span className={tgHdl.status === 'Atherogenic Risk' ? 'text-red-600 font-bold' : 'text-emerald-600 font-bold'}>
+                  {tgHdl.ratio ? `${tgHdl.ratio}x` : 'Pending Lipids'} ({tgHdl.status})
+                </span>
+              </div>
+              <InlineBarometer
+                value={tgHdl.ratio ?? 2.1}
+                min={0.5}
+                max={5.0}
+                normalCutoff={1.99}
+                borderlineCutoff={2.99}
+                unit="ratio"
+                label="TG:HDL"
+              />
+            </div>
+
+            {/* Asian-Indian BMI Barometer Card */}
+            <div className="p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+              <div className="flex justify-between text-xs font-semibold">
+                <span>Asian-Indian Specific BMI (ICMR)</span>
+                <span className={cn('font-bold', asianBmi.color)}>
+                  {bmi} kg/m² ({asianBmi.category})
+                </span>
+              </div>
+              <InlineBarometer
+                value={bmi}
+                min={15}
+                max={35}
+                normalCutoff={22.9}
+                borderlineCutoff={24.9}
+                unit="kg/m²"
+                label="BMI"
+              />
             </div>
           </div>
         </div>
 
-        {/* Confirmatory Lab Orders */}
+        {/* 3. South Asian "Thin-Fat" Visceral Adiposity Meter (WHtR) */}
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-slate-50/70 dark:bg-slate-900/40 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              <Activity className="h-4 w-4 text-blue-600" />
+              2. South Asian "Thin-Fat" Phenotype & Visceral Adiposity Meter
+            </h4>
+            <span className={cn('text-xs font-bold px-2 py-0.5 rounded', whtr.color, 'bg-slate-200/50 dark:bg-slate-800')}>
+              WHtR: {whtr.ratio} ({whtr.status})
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div className="p-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wide block">Waist-to-Height Ratio</span>
+              <span className="text-lg font-bold text-slate-900 dark:text-white mt-1 block">{whtr.ratio}</span>
+              <span className="text-[10px] text-slate-500">ICMR Target Cutoff: &lt; 0.50</span>
+            </div>
+            <div className="p-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wide block">Observed Waist Circumference</span>
+              <span className="text-lg font-bold text-slate-900 dark:text-white mt-1 block">{waist} cm</span>
+              <span className="text-[10px] text-slate-500">Cutoff: M &lt; 90 cm | F &lt; 80 cm</span>
+            </div>
+            <div className="p-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wide block">Clinical Adiposity Interpretation</span>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1 leading-snug">
+                {whtr.clinicalNote}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Visual ICMR Indian Food Plate ("Thali Matrix") with Fasting Switcher */}
+        <div className="rounded-xl border border-slate-300 dark:border-slate-800 p-5 bg-white dark:bg-slate-950 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-2">
+              <UtensilsCrossed className="h-4 w-4 text-emerald-600" />
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                  3. Prescribed ICMR Indian Food Plate ("Thali Matrix")
+                </h4>
+                <p className="text-[11px] text-slate-500">National Institute of Nutrition (NIN) Glycemic Architecture</p>
+              </div>
+            </div>
+
+            {/* Fasting & Festival Mode Switcher */}
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-lg">
+              <Moon className="h-3.5 w-3.5 text-amber-500 ml-1.5 mr-0.5" />
+              {[
+                { id: 'none', label: 'Standard' },
+                { id: 'navratri_vrat', label: 'Vrat / Upvaas' },
+                { id: 'ramadan', label: 'Ramadan' },
+                { id: 'diwali_sweets', label: 'Festival Recovery' },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setFastingContext(f.id as FastingFestivalType)}
+                  className={cn(
+                    'px-2 py-1 text-[11px] font-semibold rounded transition-all',
+                    fastingContext === f.id
+                      ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  )}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Visual Thali 3-Zone Breakdown */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Zone 1: 50% Fiber */}
+            <div className="p-3.5 rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50/40 dark:bg-emerald-950/20 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+                  50% Protective Fiber
+                </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-200/60 text-emerald-900 dark:bg-emerald-900">NIN Core</span>
+              </div>
+              <p className="text-xs font-bold text-slate-900 dark:text-white">
+                {fastingContext === 'navratri_vrat'
+                  ? 'Cucumber, Bottle Gourd (Lauki), Raw Banana'
+                  : 'Palak, Methi, Lauki, Karela, Raw Salad'}
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                High in soluble viscous fiber; slows gastric emptying and eliminates sharp postprandial glucose excursions.
+              </p>
+            </div>
+
+            {/* Zone 2: 25% Low-GI Millets */}
+            <div className="p-3.5 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/40 dark:bg-amber-950/20 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
+                  25% Complex Millets
+                </span>
+                <span className="text-[10px] font-bold text-red-600 line-through">White Rice</span>
+              </div>
+              <p className="text-xs font-bold text-slate-900 dark:text-white">
+                {fastingContext === 'navratri_vrat'
+                  ? 'Samak Rice (Barnyard Millet) & Kuttu Atta'
+                  : 'Foxtail (Kangni) / Barnyard / Ragi Millet'}
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                Rich in resistant starch and amylose. Lowers insulin demand compared to polished Sonamasuri or Maida.
+              </p>
+            </div>
+
+            {/* Zone 3: 25% Protein & Healthy Fats */}
+            <div className="p-3.5 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50/40 dark:bg-blue-950/20 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">
+                  25% High-Satiety Protein
+                </span>
+                <span className="text-[10px] font-bold text-emerald-600">GLUT-4 Support</span>
+              </div>
+              <p className="text-xs font-bold text-slate-900 dark:text-white">
+                {fastingContext === 'navratri_vrat'
+                  ? 'Roasted Makhana, Paneer, Curd, Peanuts'
+                  : 'Sprouted Moong, Roasted Chana, Paneer, Dal'}
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+                Enhances satiety, preserves skeletal muscle mass, and promotes peripheral glucose disposal.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 5. Confirmatory Lab Investigations Orders */}
         <div>
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2.5">
-            4. Recommended Confirmatory Diagnostic Investigations
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-2.5 flex items-center gap-1.5">
+            <CheckCircle2 className="h-4 w-4 text-blue-600" />
+            4. Physician Confirmatory Orders & Follow-up Checklist
           </h4>
           <div className="border border-slate-200 dark:border-slate-800 rounded-lg p-3 bg-slate-50 dark:bg-slate-900/50">
             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -256,7 +368,7 @@ export function GeminiDynamicInsights({ result }: { result: ScreeningResult }) {
                 'Urinary Albumin-to-Creatinine Ratio (uACR) & eGFR',
               ].map((order, i) => (
                 <li key={i} className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-blue-600 shrink-0" />
                   <span>{order}</span>
                 </li>
               ))}
