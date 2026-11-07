@@ -2,13 +2,11 @@
 
 import Link from 'next/link';
 import {
-  FileText,
   RotateCcw,
   CalendarClock,
   FileJson,
   Share2,
   Stethoscope,
-  Activity,
   ArrowRight,
   SlidersHorizontal,
 } from 'lucide-react';
@@ -65,7 +63,7 @@ export function ResultView({ result }: { result: ScreeningResult }) {
           <AlertDescription className="mt-1 text-xs text-red-800 dark:text-red-300">
             {result.emergency_flags.map((f, i) => (
               <div key={i}>
-                <strong>{f.type}</strong> — {f.urgency}
+                <strong>{f.type}</strong> - {f.urgency}
               </div>
             ))}
           </AlertDescription>
@@ -88,7 +86,7 @@ export function ResultView({ result }: { result: ScreeningResult }) {
                 Metabolic Health Index: {result.health_score} / 100
               </h2>
               <p className="text-xs text-slate-500">
-                {result.created_at ? `Evaluated on ${formatDate(result.created_at)}` : 'Real-time Clinical Triage'} • ICMR & RSSDI Aligned
+                {result.created_at ? `Evaluated on ${formatDate(result.created_at)}` : 'Real-time Clinical Triage'} - ICMR & RSSDI Aligned
               </p>
             </div>
           </div>

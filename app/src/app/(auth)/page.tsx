@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import {
-  Activity,
   ArrowRight,
   ClipboardPaste,
   FileJson,
@@ -176,32 +175,32 @@ export default function ClinicalHomePage() {
                 <tr>
                   <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">Fasting Plasma Glucose (FPG)</td>
                   <td className="py-3 px-3 text-emerald-600 font-bold">&lt; 100 mg/dL</td>
-                  <td className="py-3 px-3 text-amber-600 font-bold">100 – 125 mg/dL (IFG)</td>
-                  <td className="py-3 px-3 text-red-600 font-bold">≥ 126 mg/dL (Diabetic)</td>
+                  <td className="py-3 px-3 text-amber-600 font-bold">100 - 125 mg/dL (IFG)</td>
+                  <td className="py-3 px-3 text-red-600 font-bold">&ge; 126 mg/dL (Diabetic)</td>
                 </tr>
                 <tr>
                   <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">MDRF Indian Diabetes Risk Score (IDRS)</td>
                   <td className="py-3 px-3 text-emerald-600 font-bold">&lt; 30 (Low Risk)</td>
-                  <td className="py-3 px-3 text-amber-600 font-bold">30 – 50 (Moderate Risk)</td>
-                  <td className="py-3 px-3 text-red-600 font-bold">≥ 60 (High Risk, 95% Sensitivity)</td>
+                  <td className="py-3 px-3 text-amber-600 font-bold">30 - 50 (Moderate Risk)</td>
+                  <td className="py-3 px-3 text-red-600 font-bold">&ge; 60 (High Risk, 95% Sensitivity)</td>
                 </tr>
                 <tr>
                   <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">TG / HDL Atherogenic Dyslipidemia Index</td>
                   <td className="py-3 px-3 text-emerald-600 font-bold">&lt; 2.0 (Favorable)</td>
-                  <td className="py-3 px-3 text-amber-600 font-bold">2.0 – 2.9 (Mild Risk)</td>
-                  <td className="py-3 px-3 text-red-600 font-bold">≥ 3.0 (Severe sdLDL / Insulin Resistance)</td>
+                  <td className="py-3 px-3 text-amber-600 font-bold">2.0 - 2.9 (Mild Risk)</td>
+                  <td className="py-3 px-3 text-red-600 font-bold">&ge; 3.0 (Severe sdLDL / Insulin Resistance)</td>
                 </tr>
                 <tr>
                   <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">Asian-Indian Specific BMI</td>
-                  <td className="py-3 px-3 text-emerald-600 font-bold">18.0 – 22.9 kg/m²</td>
-                  <td className="py-3 px-3 text-amber-600 font-bold">23.0 – 24.9 kg/m² (Overweight)</td>
-                  <td className="py-3 px-3 text-red-600 font-bold">≥ 25.0 kg/m² (Obese per ICMR)</td>
+                  <td className="py-3 px-3 text-emerald-600 font-bold">18.0 - 22.9 kg/m2</td>
+                  <td className="py-3 px-3 text-amber-600 font-bold">23.0 - 24.9 kg/m2 (Overweight)</td>
+                  <td className="py-3 px-3 text-red-600 font-bold">&ge; 25.0 kg/m2 (Obese per ICMR)</td>
                 </tr>
                 <tr>
                   <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">Hemodynamics (Blood Pressure)</td>
                   <td className="py-3 px-3 text-emerald-600 font-bold">&lt; 120/80 mmHg</td>
-                  <td className="py-3 px-3 text-amber-600 font-bold">120–129 / &lt;80 mmHg</td>
-                  <td className="py-3 px-3 text-red-600 font-bold">≥ 130/80 mmHg (Stage 1 HTN)</td>
+                  <td className="py-3 px-3 text-amber-600 font-bold">120-129 / &lt;80 mmHg</td>
+                  <td className="py-3 px-3 text-red-600 font-bold">&ge; 130/80 mmHg (Stage 1 HTN)</td>
                 </tr>
               </tbody>
             </table>
@@ -214,7 +213,7 @@ export default function ClinicalHomePage() {
         <div className="container mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-300">
             <HeartPulse className="h-4 w-4 text-blue-600" />
-            Diabetes Risk Intelligence System • ICMR-INDIAB & RSSDI Framework
+            Diabetes Risk Intelligence System - ICMR-INDIAB & RSSDI Framework
           </div>
           <div className="text-[11px] text-slate-400">
             Diagnostic Clinical Decision Support System. Validated for South Asian adult populations.
