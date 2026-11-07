@@ -116,7 +116,6 @@ export function GeminiDynamicInsights({ result }: { result: ScreeningResult }) {
   const glucose = input.glucose_mg_dl ?? 110;
   const isHighRisk = idrs.score >= 60 || glucose >= 126;
 
-  // Load stored Gemini key on client mount
   useEffect(() => {
     const saved = localStorage.getItem('gemini_user_api_key');
     if (saved) setApiKey(saved);
@@ -449,155 +448,15 @@ export function GeminiDynamicInsights({ result }: { result: ScreeningResult }) {
               <span className="text-lg font-bold text-slate-900 dark:text-white mt-1 block">{waist} cm</span>
               <span className="text-[10px] text-slate-500">Cutoff: M &lt; 90 cm | F &lt; 80 cm</span>
             </div>
-            <div className="p-3 rounded-lg bg-white dark:b
-
-Set-Content -Path "app\src\app\api\gemini\route.ts" -Encoding UTF8 -Value @'
-import { NextRequest, NextResponse } from 'next/server';
-
-const SERVER_GEMINI_KEY =
-  process.env.GEMINI_API_KEY ||
-  process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
-  '';
-
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-    const {
-      patientProfile,
-      language = 'en',
-      fastingMode = 'none',
-      idrsScore,
-      tgHdlRatio,
-      acanthosisNigricans = false,
-      skinTags = false,
-      chaiCups = 2,
-      sugarSpoons = 1.5,
-      biscuits = 2,
-      region = 'south',
-    } = body;
-
-    // Use client-provided key if supplied in header or body, else fallback to server env
-    const clientKey = req.headers.get('x-gemini-key') || body.apiKey;
-    const apiKey = clientKey || SERVER_GEMINI_KEY;
-
-    if (!apiKey) {
-      return NextResponse.json(
-        {
-          ok: false,
-          needsApiKey: true,
-          error: 'Gemini API Key missing. Please provide your Google Gemini API key.',
-        },
-        { status: 200 }
-      );
-    }
-
-    // Calculate daily added sucrose from chai & biscuits
-    const dailySugarGrams = parseFloat((chaiCups * sugarSpoons * 4.2 + biscuits * 2.5).toFixed(1));
-
-    const languageInstruction: Record<string, string> = {
-      en: 'English (Indian Clinical Diabetology tone)',
-      hi: 'Hindi (in pure Devanagari script: हिन्दी)',
-      ta: 'Tamil (in Tamil script: தமிழ்)',
-      te: 'Telugu (in Telugu script: తెలుగు)',
-      bn: 'Bengali (in Bengali script: বাংলা)',
-      mr: 'Marathi (in Devanagari script: मराठी)',
-      gu: 'Gujarati (in Gujarati script: ગુજરાતી)',
-      kn: 'Kannada (in Kannada script: ಕನ್ನಡ)',
-      ml: 'Malayalam (in Malayalam script: മലയാളം)',
-    };
-
-    const targetLang = languageInstruction[language] ?? languageInstruction.en;
-
-    const systemPrompt = `You are a consultant endocrinologist and diabetologist practicing under ICMR-INDIAB and RSSDI guidelines.
-Analyze the following South Asian patient and generate a deeply personalized clinical and lifestyle synthesis:
-
-PATIENT BIOMARKERS:
-- Blood Glucose: ${patientProfile.glucose ?? 'N/A'} mg/dL (${patientProfile.glucoseType ?? 'Fasting'})
-- Blood Pressure: ${patientProfile.sbp ?? 120}/${patientProfile.dbp ?? 80} mmHg
-- Asian-Indian BMI: ${patientProfile.bmi ?? 'N/A'} kg/m2 (Target: 18.0-22.9, Overweight: >=23, Obese: >=25)
-- Waist Circumference: ${patientProfile.waist ?? 'N/A'} cm (South Asian Cutoffs: M <90cm, F <80cm)
-- MDRF Indian Diabetes Risk Score (IDRS): ${idrsScore ?? 'N/A'} / 100
-- TG/HDL Atherogenic Ratio: ${tgHdlRatio ?? 'N/A'} (Cutoff < 2.0; indicates small dense LDL)
-
-PHYSICAL & CLINICAL EXAM:
-- Acanthosis Nigricans (dark velvety skin around neck/knuckles): ${acanthosisNigricans ? 'PRESENT (cardinal marker of hyperinsulinemia)' : 'ABSENT'}
-- Skin Tags (acrochordons): ${skinTags ? 'PRESENT' : 'ABSENT'}
-
-LIFESTYLE, REGIONAL DIET & CHAI HABITS:
-- Geographic Region: ${region.toUpperCase()} India
-- Chai/Filter Coffee: ${chaiCups} cups/day with ${sugarSpoons} tsp sugar/cup
-- Tea Biscuits/Rusks: ${biscuits} biscuits/day (refined maida + sugar)
-- Total Hidden Sucrose: ${dailySugarGrams} g/day (ICMR guideline: <20g/day)
-- Fasting Context: ${fastingMode}
-
-TARGET LANGUAGE:
-Write all responses strictly in ${targetLang}.
-
-Return strictly a valid JSON object with this exact structure, with NO surrounding markdown or backticks:
-{
-  "clinicalTriage": "A concise 2-sentence objective assessment of the patient's glycemic, atherogenic and cardiovascular risk in the target language.",
-  "atherogenicAssessment": "Interpretation of TG/HDL ratio, Thin-Fat phenotype, and insulin resistance state in the target language.",
-  "chaiImpactAnalysis": "Specific clinical critique of the patient's daily chai and biscuit sucrose load (${dailySugarGrams}g) and how it affects beta-cell exhaustion in the target language.",
-  "shatapadiPrescription": "Personalized 100-step (Shatapadi) post-meal light walk prescription explaining its GLUT-4 glucose clearing mechanism in the target language.",
-  "dietarySwaps": [
-    {
-      "staple": "Common regional food item (e.g., polished Sonamasuri rice or Maida paratha)",
-      "swap": "Prescribed regional millet / fiber swap (e.g., Foxtail/Barnyard millet or Jowar roti)",
-      "clinicalReason": "Clinical justification in target language"
-    },
-    {
-      "staple": "Fried tea snacks / biscuits",
-      "swap": "Roasted chana / Makhana / Sprouted moong sundal",
-      "clinicalReason": "Clinical justification in target language"
-    }
-  ],
-  "physicianOrders": [
-    "Venous Fasting Plasma Glucose + 75g 2-Hour Oral Glucose Tolerance Test (OGTT)",
-    "Venous HbA1c via NGSP-certified HPLC methodology",
-    "Complete Fasting Lipid Profile (TG, HDL-C, Total Cholesterol, Calculated LDL)",
-    "Urinary Albumin-to-Creatinine Ratio (uACR) and Serum Creatinine"
-  ]
-}`;
-
-    const models = ['gemini-1.5-flash', 'gemini-1.5-pro'];
-    let lastError = '';
-
-    for (const model of models) {
-      try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: systemPrompt }] }],
-              generationConfig: {
-                temperature: 0.2,
-                maxOutputTokens: 1200,
-              },
-            }),
-          }
-        );
-
-        if (!res.ok) {
-          const errData = await res.text();
-          lastError = `Model ${model} returned ${res.status}: ${errData}`;
-          continue;
-        }
-
-        const json = await res.json();
-        const rawText = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-        const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleaned);
-
-        return NextResponse.json({ ok: true, data: parsed, modelUsed: model });
-      } catch (err: any) {
-        lastError = err?.message || 'Gemini inference failed';
-      }
-    }
-
-    return NextResponse.json({ ok: false, error: lastError }, { status: 200 });
-  } catch (err: any) {
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
-  }
+            <div className="p-3 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase tracking-wide block">Clinical Adiposity Interpretation</span>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1 leading-snug">
+                {whtr.clinicalNote}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
