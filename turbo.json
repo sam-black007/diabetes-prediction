@@ -1,4 +1,4 @@
-{
+﻿{
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "dev": {
@@ -34,5 +34,12 @@
       "dependsOn": ["api/python#build"]
     }
   },
-  "globalEnv": ["DATABASE_URL", "CLERK_SECRET_KEY", "UPSTASH_REDIS_REST_TOKEN"]
+  "globalEnv": [
+    "DATABASE_URL",
+    "CLERK_SECRET_KEY",
+    "UPSTASH_REDIS_REST_TOKEN",
+    "API_INTERNAL_URL",
+    "GEMINI_API_KEY",
+    "NEXT_PUBLIC_GEMINI_API_KEY"
+  ]
 }

@@ -45,7 +45,6 @@ const withPWA = require('next-pwa')({
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
-  outputFileTracingRoot: path.join(__dirname, '..'),
   transpilePackages: ['@dri/shared-types'],
   eslint: {
     ignoreDuringBuilds: true,
@@ -54,6 +53,7 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   experimental: {
+    outputFileTracingRoot: path.join(__dirname, '..'),
     serverActions: {
       bodySizeLimit: '2mb',
     },
