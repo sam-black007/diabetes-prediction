@@ -1,14 +1,26 @@
-﻿import { neon } from '@neondatabase/serverless';
+﻿let cachedSql: any = null;
 
-const connectionString =
-  process.env.DATABASE_URL ||
-  process.env.NEON_DATABASE_URL ||
-  process.env.POSTGRES_URL ||
-  '';
+export async function getNeonSql() {
+  if (cachedSql) return cachedSql;
+  const connectionString =
+    process.env.DATABASE_URL ||
+    process.env.NEON_DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    '';
 
-export const sql = connectionString ? neon(connectionString) : null;
+  if (!connectionString) return null;
+
+  try {
+    const { neon } = await import('@neondatabase/serverless');
+    cachedSql = neon(connectionString);
+    return cachedSql;
+  } catch {
+    return null;
+  }
+}
 
 export async function initNeonSchema() {
+  const sql = await getNeonSql();
   if (!sql) return;
   try {
     await sql`

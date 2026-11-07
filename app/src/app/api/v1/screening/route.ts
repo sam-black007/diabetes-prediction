@@ -1,5 +1,5 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
-import { sql, initNeonSchema } from '@/lib/neon';
+import { getNeonSql, initNeonSchema } from '@/lib/neon';
 
 const BACKEND_URL = 'https://diabetes-prediction-api-9hx8.onrender.com';
 
@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const token = req.headers.get('authorization');
 
-    // 1. Send to ML clinical engine
+    // 1. Evaluate with Python ML engine
     const res = await fetch(`${BACKEND_URL}/api/v1/screening`, {
       method: 'POST',
       headers: {
@@ -21,9 +21,10 @@ export async function POST(req: NextRequest) {
 
     const data = await res.json();
 
-    // 2. Persist directly into Neon Postgres
-    if (sql && res.ok && data.id) {
-      try {
+    // 2. Persist into Neon Postgres if database is configured
+    try {
+      const sql = await getNeonSql();
+      if (sql && res.ok && data.id) {
         await initNeonSchema();
         const userId = body.user_id || 'patient-google-default';
         await sql`
@@ -39,9 +40,9 @@ export async function POST(req: NextRequest) {
           )
           ON CONFLICT (id) DO NOTHING;
         `;
-      } catch (dbErr) {
-        console.warn('[Neon Postgres] Direct write fallback:', dbErr);
       }
+    } catch (dbErr) {
+      console.warn('[Neon Postgres] Direct write fallback:', dbErr);
     }
 
     return NextResponse.json(data, { status: res.status });
