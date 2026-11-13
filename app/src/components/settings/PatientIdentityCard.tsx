@@ -1,16 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { toast } from '@/components/ui/use-toast';
-import { IdCard, Copy, Check } from 'lucide-react';
+import { User, Copy, Check } from 'lucide-react';
 import { getMyPatientId } from '@/lib/patient-id';
 
 export function PatientIdentityCard() {
   const [copied, setCopied] = useState(false);
-  const patientId = getMyPatientId();
+  const [patientId, setPatientId] = useState('DRI-PT-80562');
+
+  useEffect(() => {
+    setPatientId(getMyPatientId());
+  }, []);
 
   function handleCopy() {
     navigator.clipboard.writeText(patientId);
@@ -27,7 +31,7 @@ export function PatientIdentityCard() {
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <IdCard className="h-5 w-5 text-blue-600" />
+            <User className="h-5 w-5 text-blue-600" />
             <CardTitle className="text-base font-bold">Clinical Patient ID</CardTitle>
           </div>
           <Badge variant="secondary" className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300 border-none">
