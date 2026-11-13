@@ -1,10 +1,8 @@
 'use client';
 
-import { DoctorPatientMonitor } from '@/components/doctor/DoctorPatientMonitor';
-import { Stethoscope, User } from 'lucide-react';
-
 import { useState } from 'react';
 import Link from 'next/link';
+import { Stethoscope, User } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -18,6 +16,7 @@ import {
 } from '@/components/ui/Select';
 import { RiskBadge } from '@/components/screening/RiskBadge';
 import { HistoryTrendChart } from '@/components/history/HistoryTrendChart';
+import { DoctorPatientMonitor } from '@/components/doctor/DoctorPatientMonitor';
 import { useHistory } from '@/hooks/useHistory';
 import { cn } from '@/lib/utils';
 
@@ -40,12 +39,15 @@ export function HistoryTable() {
 
   return (
     <div className="space-y-5">
+      {/* Tab Switcher: Patient History vs Doctor Clinical Monitor */}
       <div className="flex items-center justify-between border-b border-border/80 pb-3">
         <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border text-xs">
           <button
             onClick={() => setActiveTab('patient')}
             className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === 'patient' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              activeTab === 'patient'
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <User className="h-3.5 w-3.5 text-blue-600" />
@@ -54,7 +56,9 @@ export function HistoryTable() {
           <button
             onClick={() => setActiveTab('doctor')}
             className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
-              activeTab === 'doctor' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              activeTab === 'doctor'
+                ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
+                : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Stethoscope className="h-3.5 w-3.5 text-blue-600" />
@@ -66,125 +70,124 @@ export function HistoryTable() {
       {activeTab === 'doctor' ? (
         <DoctorPatientMonitor />
       ) : (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {isLoading ? 'Loading…' : `${total} screening${total === 1 ? '' : 's'}`}
-        </p>
-        <div className="w-48">
-          <Select
-            value={risk}
-            onValueChange={(v) => {
-              setRisk(v);
-              setPage(0);
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Filter by risk" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All risk levels</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
-              <SelectItem value="medium">Moderate</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="very_high">Very high</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              {isLoading ? 'Loading…' : `${total} screening${total === 1 ? '' : 's'}`}
+            </p>
+            <div className="w-48">
+              <Select
+                value={risk}
+                onValueChange={(v) => {
+                  setRisk(v);
+                  setPage(0);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by risk" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All risk levels</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Moderate</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="very_high">Very high</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-      {isError && (
-        <Alert variant="warning">
-          <AlertDescription>Could not load history. Showing nothing.</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Longitudinal Risk Progression Chart */}
-      {!isLoading && (
-        <HistoryTrendChart screenings={rows} />
-      )}
-
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full" />
-          ))}
-        </div>
-      ) : rows.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No screenings yet.{' '}
-            <Link href="/screening" className="text-primary underline">
-              Run your first screening
-            </Link>
-            .
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {rows.map((row) =>
-            row.pending ? (
-              <Card key={row.id} className="border-dashed">
-                <CardContent className="flex items-center justify-between p-4">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">
-                      {new Date(row.created_at).toLocaleString()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Waiting to sync from this device
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                    Pending sync
-                  </span>
-                </CardContent>
-              </Card>
-            ) : (
-              <Link key={row.id} href={`/history/${row.id}`} className="block">
-                <Card className={cn('transition-colors hover:bg-accent/50')}>
-                  <CardContent className="flex items-center justify-between p-4">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">
-                        {new Date(row.created_at).toLocaleString()}
-                      </p>
-                      <p className="text-xs text-muted-foreground">ID {row.id.slice(0, 8)}</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-lg font-semibold tabular-nums">
-                        {row.health_score}
-                        <span className="text-xs text-muted-foreground">/100</span>
-                      </span>
-                      <RiskBadge category={row.risk_category} />
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            )
+          {isError && (
+            <Alert variant="warning">
+              <AlertDescription>Could not load history. Showing nothing.</AlertDescription>
+            </Alert>
           )}
-        </div>
-      )}
 
-      {total > PAGE_SIZE && (
-        <div className="flex items-center justify-between">
-          <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-            Previous
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            Page {page + 1} of {maxPage + 1}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= maxPage}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Next
-          </Button>
+          {/* Longitudinal Risk Progression Chart */}
+          {!isLoading && (
+            <HistoryTrendChart screenings={rows} />
+          )}
+
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : rows.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center text-sm text-muted-foreground">
+                No screenings yet.{' '}
+                <Link href="/screening" className="text-primary underline">
+                  Run your first screening
+                </Link>
+                .
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {rows.map((row) =>
+                row.pending ? (
+                  <Card key={row.id} className="border-dashed">
+                    <CardContent className="flex items-center justify-between p-4">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">
+                          {new Date(row.created_at).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Waiting to sync from this device
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                        Pending sync
+                      </span>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Link key={row.id} href={`/history/${row.id}`} className="block">
+                    <Card className={cn('transition-colors hover:bg-accent/50')}>
+                      <CardContent className="flex items-center justify-between p-4">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">
+                            {new Date(row.created_at).toLocaleString()}
+                          </p>
+                          <p className="text-xs text-muted-foreground">ID {row.id.slice(0, 8)}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="text-lg font-semibold tabular-nums">
+                            {row.health_score}
+                            <span className="text-xs text-muted-foreground">/100</span>
+                          </span>
+                          <RiskBadge category={row.risk_category} />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                )
+              )}
+            </div>
+          )}
+
+          {total > PAGE_SIZE && (
+            <div className="flex items-center justify-between">
+              <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+                Previous
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Page {page + 1} of {maxPage + 1}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= maxPage}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
-
-      )}
-    </div>
