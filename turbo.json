@@ -1,4 +1,4 @@
-﻿{
+{
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "dev": {
@@ -6,8 +6,13 @@
       "persistent": true
     },
     "build": {
-      "dependsOn": ["^build"],
-      "outputs": [".next/**", "dist/**"]
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        ".next/**",
+        "dist/**"
+      ]
     },
     "lint": {
       "outputs": []
@@ -16,12 +21,16 @@
       "outputs": []
     },
     "test": {
-      "outputs": ["coverage/**"],
+      "outputs": [
+        "coverage/**"
+      ],
       "dependsOn": []
     },
     "test:e2e": {
       "outputs": [],
-      "dependsOn": ["build"]
+      "dependsOn": [
+        "build"
+      ]
     },
     "db:push": {
       "outputs": []
@@ -30,8 +39,12 @@
       "outputs": []
     },
     "openapi:generate": {
-      "outputs": ["packages/shared-types/src/**"],
-      "dependsOn": ["api/python#build"]
+      "outputs": [
+        "packages/shared-types/src/**"
+      ],
+      "dependsOn": [
+        "api/python#build"
+      ]
     }
   },
   "globalEnv": [
@@ -40,6 +53,8 @@
     "UPSTASH_REDIS_REST_TOKEN",
     "API_INTERNAL_URL",
     "GEMINI_API_KEY",
-    "NEXT_PUBLIC_GEMINI_API_KEY"
+    "NEXT_PUBLIC_GEMINI_API_KEY",
+    "CLERK_ISSUER",
+    "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"
   ]
 }
