@@ -11,7 +11,7 @@ import {
   Plus,
   ShieldCheck,
   Stethoscope,
-} from 'lucide-react';
+} , FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
@@ -38,6 +38,13 @@ export default function ClinicalHomePage() {
           <nav className="hidden md:flex items-center gap-6 text-xs font-semibold text-slate-600 dark:text-slate-400">
             <Link href="/screening" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
               Patient Screening
+            </Link>
+            <Link href="/screening?mode=demo" className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors">
+              <FlaskConical className="h-3.5 w-3.5" /> Free Demo (5 Trials)
+            </Link>
+            <Link href="/screening?mode=demo" className="inline-flex items-center gap-2 rounded-xl bg-amber-500/15 border border-amber-500/40 px-5 py-3 text-sm font-bold text-amber-300 hover:bg-amber-500/25 transition-all shadow-sm">
+              <FlaskConical className="h-4 w-4 text-amber-400" />
+              <span>Try Free Demo (5 Free Trials)</span>
             </Link>
             <Link href="/history" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
               Patient History & Trends

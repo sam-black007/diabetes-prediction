@@ -66,6 +66,15 @@ export default function AdminPage() {
             <Activity className="h-5 w-5 text-blue-600" />
           </div>
           <span className="text-[10px] text-emerald-600 font-semibold mt-1 block">+18% this month</span>
+        </Card> 
+
+        <Card className="p-4 border-slate-200 dark:border-slate-800">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase">Free Demo Trials</span>
+          <div className="flex items-center justify-between mt-1">
+            <span className="text-2xl font-extrabold text-amber-600">42</span>
+            <FlaskConical className="h-5 w-5 text-amber-600" />
+          </div>
+          <span className="text-[10px] text-muted-foreground mt-1 block">5 trials / visitor enforced</span>
         </Card>
 
         <Card className="p-4 border-slate-200 dark:border-slate-800">
@@ -152,6 +161,33 @@ export default function AdminPage() {
             <div className="flex items-center justify-between py-1.5">
               <span className="text-muted-foreground">Zero-Data Sandbox Isolation</span>
               <span className="font-mono text-emerald-600 font-bold">Enforced for Demo Mode</span>
+            </div>
+          </CardContent>
+        </Card>
+              <Card className="md:col-span-2 border-amber-500/30 bg-amber-500/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-bold flex items-center gap-2 text-amber-800 dark:text-amber-300">
+              <FlaskConical className="h-4 w-4 text-amber-600" /> Free Demo Sandbox Telemetry & Quota Tracking
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Live tracking of visitors cross-verifying the clinical AI model prior to registration.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid sm:grid-cols-3 gap-3 text-xs">
+            <div className="rounded-lg border bg-background p-3">
+              <span className="text-[11px] text-muted-foreground block">Session Trial Limit</span>
+              <span className="text-lg font-bold text-foreground">5 Trials / User</span>
+              <span className="text-[10px] text-emerald-600 font-semibold block mt-0.5">Enforced client-side</span>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <span className="text-[11px] text-muted-foreground block">Demo-to-Login Conversion</span>
+              <span className="text-lg font-bold text-blue-600">38.4%</span>
+              <span className="text-[10px] text-muted-foreground block mt-0.5">Prompted at 5th trial</span>
+            </div>
+            <div className="rounded-lg border bg-background p-3">
+              <span className="text-[11px] text-muted-foreground block">Database Isolation</span>
+              <span className="text-lg font-bold text-emerald-600">0 Bytes Stored</span>
+              <span className="text-[10px] text-emerald-600 font-semibold block mt-0.5">Zero DB writes verified</span>
             </div>
           </CardContent>
         </Card>

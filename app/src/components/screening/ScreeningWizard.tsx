@@ -41,7 +41,8 @@ import {
 } from '@/lib/validation/screening';
 import type { ScreeningResult } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { getCurrentRole } from '@/lib/role-store';
+import { getCurrentRole, setCurrentRole } from '@/lib/role-store';
+import { getDemoTrialsUsed, getDemoTrialsRemaining, canRunDemoTrial, recordDemoTrial } from '@/lib/demo-tracker';
 import { saveScreeningToSupabase } from '@/lib/supabase';
 
 const STEPS = [
@@ -200,8 +201,20 @@ export function ScreeningWizard() {
 
   async function onSubmit(values: ScreeningFormValues) {
     const currentRole = getCurrentRole();
-    if (currentRole === 'demo') {
-      // Zero-Data Sandbox Mode: Calculate risk locally in-memory, do not save to database
+    if (currentRole === 'demo' || searchParams.get('mode') === 'demo') {
+      // Check 5 trial quota
+      if (!canRunDemoTrial()) {
+        toast({
+          variant: 'destructive',
+          title: 'Trial Limit Reached',
+          description: 'You have used all 5 free demo trials. Please sign in for unlimited full access.',
+        });
+        return;
+      }
+
+      // Record trial count
+      const trialResult = recordDemoTrial();
+
       const glucose = values.glucose_mg_dl || 100;
       const sbp = values.sbp || 120;
       let score = 85;
@@ -213,6 +226,7 @@ export function ScreeningWizard() {
         score = 68;
         category = 'medium';
       }
+
       setResult({
         id: 'DEMO-' + Math.floor(1000 + Math.random() * 9000),
         created_at: new Date().toISOString(),
@@ -221,11 +235,14 @@ export function ScreeningWizard() {
         rules: [],
         features: {},
         recommendations: [
-          'DEMO SANDBOX SIMULATION: This test entry was NOT saved to the database.',
+          `FREE TRIAL ${trialResult.used} OF 5: This evaluation was calculated in sandbox mode and NOT saved to any database.`,
+          trialResult.remaining > 0
+            ? `You have ${trialResult.remaining} free trial${trialResult.remaining === 1 ? '' : 's'} remaining.`
+            : 'You have used all 5 free demo trials. Sign in to unlock full unlimited EHR records.',
           'Recommended HbA1c screening every 6-12 months as per ICMR-INDIAB.',
-          'Adopt traditional millet-based high-fiber diet to stabilize postprandial glucose peaks.',
+          'Adopt traditional whole-grain millets and 30-minute post-meal walking.',
         ],
-        lifestyle_advice: 'Sandbox demo evaluation complete. Sign in as Patient to save your permanent medical record.',
+        lifestyle_advice: `Sandbox trial ${trialResult.used}/5 complete. ${trialResult.remaining > 0 ? `${trialResult.remaining} free trials left.` : 'Trial quota reached — sign in for permanent patient history.'}`,
         input: values as any,
       });
       return;
