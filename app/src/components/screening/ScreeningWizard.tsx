@@ -1,5 +1,7 @@
 'use client';
 
+import { SignedIn, SignedOut } from '@clerk/nextjs';
+
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -19,6 +21,7 @@ import {
   Loader2,
   Scale,
   Sparkles,
+  FlaskConical,
   User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -58,6 +61,8 @@ export function ScreeningWizard() {
   const stepChangedAt = useRef(Date.now());
   const [result, setResult] = useState<ScreeningResult | null>(null);
   const [showLabModal, setShowLabModal] = useState(false);
+  const [showDemoPresets, setShowDemoPresets] = useState(false);
+  const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
   const { submit, isPending, queued, reset } = useSubmitScreening();
   const searchParams = useSearchParams();
 
@@ -328,53 +333,91 @@ export function ScreeningWizard() {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* Quick Clinical Profile Presets */}
-          <div className="rounded-xl border border-primary/20 bg-muted/20 p-3.5 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-primary">
-                <Sparkles className="h-3.5 w-3.5" /> Quick Clinical Presets
-              </span>
-              <span className="text-[11px] text-muted-foreground">Click to populate sample patient profile</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs bg-background hover:bg-emerald-500/10 hover:text-emerald-600 hover:border-emerald-500/30"
-                onClick={() => loadPreset('healthy')}
-              >
-                🟢 Healthy Baseline
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs bg-background hover:bg-amber-500/10 hover:text-amber-600 hover:border-amber-500/30"
-                onClick={() => loadPreset('prediabetes')}
-              >
-                🟡 Prediabetes Risk
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs bg-background hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
-                onClick={() => loadPreset('highRisk')}
-              >
-                🔴 High Risk Case
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 text-xs bg-background hover:bg-purple-500/10 hover:text-purple-600 hover:border-purple-500/30"
-                onClick={() => loadPreset('hba1cCase')}
-              >
-                🟣 HbA1c Case (7.2%)
-              </Button>
-            </div>
-          </div>
+          {/* Quick Clinical Presets - ONLY visible in Demo Mode, hidden for signed-in users by default */}
+          {clerkEnabled ? (
+            <>
+              <SignedOut>
+                <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
+                      <FlaskConical className="h-3.5 w-3.5" /> Demo Simulation Mode
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">Signed out demo — click to populate sample patient profile</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('healthy')}>
+                      🟢 Healthy Baseline
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('prediabetes')}>
+                      🟡 Prediabetes Risk
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('highRisk')}>
+                      🔴 High Risk Case
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('hba1cCase')}>
+                      🟣 HbA1c Case (7.2%)
+                    </Button>
+                  </div>
+                </div>
+              </SignedOut>
+
+              <SignedIn>
+                {showDemoPresets && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-2 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
+                        <FlaskConical className="h-3.5 w-3.5" /> Clinical Test Cases (Demo Mode)
+                      </span>
+                      <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowDemoPresets(false)}>
+                        Hide Presets
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('healthy')}>
+                        🟢 Healthy Baseline
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('prediabetes')}>
+                        🟡 Prediabetes Risk
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('highRisk')}>
+                        🔴 High Risk Case
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('hba1cCase')}>
+                        🟣 HbA1c Case (7.2%)
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </SignedIn>
+            </>
+          ) : (
+            showDemoPresets && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs font-bold text-amber-700 dark:text-amber-400">
+                    <FlaskConical className="h-3.5 w-3.5" /> Clinical Demo Simulation
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={() => setShowDemoPresets(false)}>
+                    Hide
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('healthy')}>
+                    🟢 Healthy Baseline
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('prediabetes')}>
+                    🟡 Prediabetes Risk
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('highRisk')}>
+                    🔴 High Risk Case
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" className="h-7 text-xs bg-background" onClick={() => loadPreset('hba1cCase')}>
+                    🟣 HbA1c Case (7.2%)
+                  </Button>
+                </div>
+              </div>
+            )
+          )}
 
           <form
             onSubmit={handleSubmit(onSubmit)}

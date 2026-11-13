@@ -77,6 +77,9 @@ export async function listLocalScreenings(): Promise<HistoryItem[]> {
       created_at: s.created_at,
       health_score: s.health_score,
       risk_category: s.risk_category,
+      glucose_mg_dl: s.result?.input?.glucose_mg_dl ?? undefined,
+      sbp: s.result?.input?.sbp ?? undefined,
+      dbp: s.result?.input?.dbp ?? undefined,
     }));
 }
 

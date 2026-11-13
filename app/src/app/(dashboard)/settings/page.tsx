@@ -1,3 +1,4 @@
+import { PatientIdentityCard } from '@/components/settings/PatientIdentityCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Separator } from '@/components/ui/Separator';
@@ -11,6 +12,7 @@ export const metadata = { title: 'Settings — Diabetes Risk Intelligence' };
 export default function SettingsPage() {
   return (
     <div className="space-y-4">
+      <PatientIdentityCard />
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Units</CardTitle>

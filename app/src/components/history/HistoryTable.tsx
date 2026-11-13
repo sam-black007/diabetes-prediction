@@ -1,5 +1,8 @@
 'use client';
 
+import { DoctorPatientMonitor } from '@/components/doctor/DoctorPatientMonitor';
+import { Stethoscope, User } from 'lucide-react';
+
 import { useState } from 'react';
 import Link from 'next/link';
 import { Alert, AlertDescription } from '@/components/ui/Alert';
@@ -21,6 +24,7 @@ import { cn } from '@/lib/utils';
 const PAGE_SIZE = 10;
 
 export function HistoryTable() {
+  const [activeTab, setActiveTab] = useState<'patient' | 'doctor'>('patient');
   const [risk, setRisk] = useState<string>('all');
   const [page, setPage] = useState(0);
 
@@ -35,6 +39,33 @@ export function HistoryTable() {
   const maxPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1);
 
   return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between border-b border-border/80 pb-3">
+        <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border text-xs">
+          <button
+            onClick={() => setActiveTab('patient')}
+            className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+              activeTab === 'patient' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <User className="h-3.5 w-3.5 text-blue-600" />
+            My Screening History & Graph
+          </button>
+          <button
+            onClick={() => setActiveTab('doctor')}
+            className={`px-3 py-1.5 rounded-lg font-semibold transition-all flex items-center gap-1.5 ${
+              activeTab === 'doctor' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Stethoscope className="h-3.5 w-3.5 text-blue-600" />
+            Doctor Clinical Monitor
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'doctor' ? (
+        <DoctorPatientMonitor />
+      ) : (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
@@ -69,7 +100,7 @@ export function HistoryTable() {
       )}
 
       {/* Longitudinal Risk Progression Chart */}
-      {!isLoading && rows.length >= 2 && (
+      {!isLoading && (
         <HistoryTrendChart screenings={rows} />
       )}
 
@@ -154,3 +185,6 @@ export function HistoryTable() {
     </div>
   );
 }
+
+      )}
+    </div>
