@@ -1,5 +1,6 @@
-﻿'use client';
+'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -9,18 +10,36 @@ import {
   Smartphone,
   Settings,
   ShieldCheck,
+  Stethoscope,
+  FlaskConical,
+  User,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-const NAV = [
-  { href: '/screening', label: 'Patient Screening', icon: ClipboardPlus },
-  { href: '/history', label: 'Patient Registry', icon: History },
-  { href: '/devices', label: 'Connected Devices', icon: Smartphone },
-  { href: '/settings', label: 'Portal Settings', icon: Settings },
-];
+import { getCurrentRole, type UserRole } from '@/lib/role-store';
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [role, setRole] = useState<UserRole>('patient');
+
+  useEffect(() => {
+    setRole(getCurrentRole());
+    const handler = () => setRole(getCurrentRole());
+    window.addEventListener('dri_role_changed', handler);
+    return () => window.removeEventListener('dri_role_changed', handler);
+  }, []);
+
+  const nav = [
+    { href: '/screening', label: 'Patient Screening', icon: ClipboardPlus },
+    { href: '/history', label: 'History & Trends', icon: History },
+    ...(role === 'doctor' || role === 'admin'
+      ? [{ href: '/doctor', label: 'Doctor Watchlist', icon: Stethoscope }]
+      : []),
+    ...(role === 'admin'
+      ? [{ href: '/admin', label: 'Admin Telemetry', icon: ShieldCheck }]
+      : []),
+    { href: '/devices', label: 'Connected Devices', icon: Smartphone },
+    { href: '/settings', label: 'Portal Settings', icon: Settings },
+  ];
 
   return (
     <aside className="hidden w-64 shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 md:flex md:flex-col">
@@ -39,7 +58,7 @@ export function Sidebar() {
       </Link>
 
       <nav className="flex-1 space-y-1 p-3">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {nav.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link

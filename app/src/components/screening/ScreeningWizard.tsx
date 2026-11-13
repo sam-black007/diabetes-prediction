@@ -41,6 +41,8 @@ import {
 } from '@/lib/validation/screening';
 import type { ScreeningResult } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { getCurrentRole } from '@/lib/role-store';
+import { saveScreeningToSupabase } from '@/lib/supabase';
 
 const STEPS = [
   { title: 'Glucose', subtitle: 'Plasma glucose & HbA1c', icon: Droplets },
@@ -197,6 +199,37 @@ export function ScreeningWizard() {
   }
 
   async function onSubmit(values: ScreeningFormValues) {
+    const currentRole = getCurrentRole();
+    if (currentRole === 'demo') {
+      // Zero-Data Sandbox Mode: Calculate risk locally in-memory, do not save to database
+      const glucose = values.glucose_mg_dl || 100;
+      const sbp = values.sbp || 120;
+      let score = 85;
+      let category: 'low' | 'medium' | 'high' | 'very_high' = 'low';
+      if (glucose > 140 || sbp > 140) {
+        score = 42;
+        category = 'high';
+      } else if (glucose > 100 || sbp > 125) {
+        score = 68;
+        category = 'medium';
+      }
+      setResult({
+        id: 'DEMO-' + Math.floor(1000 + Math.random() * 9000),
+        created_at: new Date().toISOString(),
+        health_score: score,
+        risk_category: category,
+        rules: [],
+        features: {},
+        recommendations: [
+          'DEMO SANDBOX SIMULATION: This test entry was NOT saved to the database.',
+          'Recommended HbA1c screening every 6-12 months as per ICMR-INDIAB.',
+          'Adopt traditional millet-based high-fiber diet to stabilize postprandial glucose peaks.',
+        ],
+        lifestyle_advice: 'Sandbox demo evaluation complete. Sign in as Patient to save your permanent medical record.',
+        input: values as any,
+      });
+      return;
+    }
     // Guard 1: Never allow premature submission if enter key was pressed on Step 1 or 2
     if (step < STEPS.length - 1) {
       await next();
