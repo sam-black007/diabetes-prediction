@@ -1,5 +1,6 @@
 'use client';
 
+import { saveDoctorToSupabase } from '@/lib/supabase';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
@@ -36,6 +37,7 @@ export function RoleLoginModal({
   const [doctorName, setDoctorName] = useState('');
   const [doctorSpec, setDoctorSpec] = useState('');
   const [doctorHospital, setDoctorHospital] = useState('');
+  const [doctorPassword, setDoctorPassword] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -57,7 +59,7 @@ export function RoleLoginModal({
         toast({
           variant: 'destructive',
           title: 'Admin Access Denied',
-          description: 'Incorrect password. Default credentials: admin@dri2026',
+          description: 'Incorrect administrator password.',
         });
         return;
       }
@@ -69,12 +71,32 @@ export function RoleLoginModal({
     }
 
     if (selectedRole === 'doctor') {
-      saveDoctorProfile({
-        id: 'DR-' + Math.floor(10000 + Math.random() * 90000),
+      if (!doctorPassword.trim()) {
+        toast({
+          variant: 'destructive',
+          title: 'Password Required',
+          description: 'Please set or enter your doctor access password.',
+        });
+        return;
+      }
+      const existingDoc = getDoctorProfile();
+      if (existingDoc.password && existingDoc.password !== doctorPassword) {
+        toast({
+          variant: 'destructive',
+          title: 'Access Denied',
+          description: 'Incorrect password for this doctor profile.',
+        });
+        return;
+      }
+      const updatedDoc = {
+        id: existingDoc.id || 'DR-' + Math.floor(10000 + Math.random() * 90000),
         name: doctorName || 'Dr. Medical Officer, MD',
         specialization: doctorSpec || 'Clinical Diabetology & RSSDI Fellow',
         hospital: doctorHospital || 'Metabolic Care Center',
-      });
+        password: doctorPassword,
+      };
+      saveDoctorProfile(updatedDoc);
+      saveDoctorToSupabase(updatedDoc);
       setCurrentRole('doctor');
       toast({ title: 'Doctor Portal Active', description: 'Monitoring patient panel.' });
       onClose();
@@ -89,7 +111,7 @@ export function RoleLoginModal({
         description: 'Testing freely in sandbox. Test entries will NOT be saved to the database.',
       });
       onClose();
-      window.location.href = '/screening';
+      window.location.href = '/screening?mode=demo';
       return;
     }
 
@@ -188,17 +210,17 @@ export function RoleLoginModal({
           {selectedRole === 'admin' && (
             <div className="rounded-xl border border-purple-200 dark:border-purple-900 bg-purple-50/30 dark:bg-purple-950/20 p-3 space-y-2">
               <label className="text-xs font-bold flex items-center gap-1 text-purple-700 dark:text-purple-300">
-                <Lock className="h-3.5 w-3.5" /> Enter Admin Password
+                <Lock className="h-3.5 w-3.5" /> Administrator Password
               </label>
               <Input
                 type="password"
-                placeholder="Enter admin password (e.g. admin@dri2026)"
+                placeholder="Enter administrator password"
                 value={adminPassword}
                 onChange={(e) => setAdminPassword(e.target.value)}
                 className="bg-white dark:bg-slate-900 text-xs h-9"
               />
               <span className="text-[10px] text-muted-foreground block">
-                Default password: <code className="text-purple-600 dark:text-purple-400 font-mono font-semibold">admin@dri2026</code>
+                Restricted to authorized system administrators.
               </span>
             </div>
           )}
@@ -206,11 +228,11 @@ export function RoleLoginModal({
           {selectedRole === 'doctor' && (
             <div className="rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/30 dark:bg-emerald-950/20 p-3 space-y-2">
               <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
-                <Stethoscope className="h-3.5 w-3.5" /> Doctor Clinical Profile
+                <Stethoscope className="h-3.5 w-3.5" /> Doctor Clinical Profile & Security
               </span>
               <div className="space-y-1.5">
                 <Input
-                  placeholder="Doctor Name (e.g. Dr. Priya Nair, MD)"
+                  placeholder="Doctor Full Name (e.g. Dr. Priya Nair, MD)"
                   value={doctorName}
                   onChange={(e) => setDoctorName(e.target.value)}
                   className="bg-white dark:bg-slate-900 text-xs h-8"
@@ -222,11 +244,26 @@ export function RoleLoginModal({
                   className="bg-white dark:bg-slate-900 text-xs h-8"
                 />
                 <Input
-                  placeholder="Hospital / Clinic (e.g. Apollo Clinical Institute)"
+                  placeholder="Hospital / Healthcare Clinic"
                   value={doctorHospital}
                   onChange={(e) => setDoctorHospital(e.target.value)}
                   className="bg-white dark:bg-slate-900 text-xs h-8"
                 />
+                <div className="pt-1">
+                  <label className="text-[11px] font-semibold flex items-center gap-1 text-emerald-800 dark:text-emerald-300 mb-1">
+                    <Lock className="h-3 w-3" /> Set / Enter Doctor Password
+                  </label>
+                  <Input
+                    type="password"
+                    placeholder="Choose your confidential doctor password"
+                    value={doctorPassword}
+                    onChange={(e) => setDoctorPassword(e.target.value)}
+                    className="bg-white dark:bg-slate-900 text-xs h-8"
+                  />
+                  <span className="text-[10px] text-muted-foreground block mt-0.5">
+                    Your private password to lock and access your patient monitoring dashboard.
+                  </span>
+                </div>
               </div>
             </div>
           )}

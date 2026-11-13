@@ -47,3 +47,27 @@ export async function fetchScreeningsFromSupabase(): Promise<SupabaseScreening[]
     return [];
   }
 }
+
+export async function saveDoctorToSupabase(doctor: { id: string; name: string; specialization: string; hospital: string; password?: string }): Promise<boolean> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/doctors`, {
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({
+        id: doctor.id,
+        name: doctor.name,
+        specialization: doctor.specialization,
+        hospital: doctor.hospital,
+        created_at: new Date().toISOString(),
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

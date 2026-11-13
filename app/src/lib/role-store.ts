@@ -7,6 +7,7 @@ export interface DoctorProfile {
   name: string;
   specialization: string;
   hospital: string;
+  password?: string;
 }
 
 const DEFAULT_DOCTOR: DoctorProfile = {
